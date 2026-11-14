@@ -1,0 +1,28 @@
+node_modules/
+.DS_Store
+.env
+.env.*
+.npmrc
+*.log
+*.tgz
+dist/
+coverage/
+.claude/
+.codex/
+.idea/
+.vscode/
+*.swiftmodule
+*.swiftdoc
+*.swiftsourceinfo
+
+# Local research, manuals and working copies
+docs/
+scratch/
+MANUAL-STATUS.md
+*.bak
+*.bak_*
+
+# Generated artefacts: only the two shipped renderer bundles are tracked
+outputs/*
+!outputs/antigravity-session-status.js
+!outputs/codex-session-status.js

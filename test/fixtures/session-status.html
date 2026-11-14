@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN" style="color-scheme:dark">
+<meta charset="utf-8">
+<title>会话进展 · 原生结构验收</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#202226;color:#d1d4da;font:14px -apple-system,sans-serif;display:flex;height:100vh}
+nav{width:290px;background:#191c21;padding:28px 14px;overflow:auto;flex:none}main{padding:40px;color:#9da3ad}h2{font-size:12px;color:#8c929d;margin:22px 12px 10px;font-weight:500}.folder{font-size:15px;padding:9px 12px;color:#cdd2da}
+[data-app-action-sidebar-thread-row]{padding:5px 12px;border-radius:8px;cursor:pointer}[data-app-action-sidebar-thread-row]:hover{background:#ffffff07}.line{display:flex;align-items:center;gap:8px;height:28px}.w-4{width:16px;display:flex;flex-shrink:0;justify-content:center;align-items:center}[data-thread-title-trigger]{flex:1;min-width:0}[data-thread-title]{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}.time{font-size:10px;color:#757c87}
+</style>
+<nav data-sidebar-navigation-root>
+<h2>项目</h2><div class="folder">▱　codex 插件开发</div>
+<div data-app-action-sidebar-project-list-id="project-a">
+<div data-app-action-sidebar-thread-row data-app-action-sidebar-thread-kind="local" data-app-action-sidebar-thread-host-id="local" data-app-action-sidebar-thread-id="local:one" data-app-action-sidebar-thread-title="会话状态插件开发">
+<div class="line"><div class="w-4"><div class="relative flex items-center justify-center"></div></div><div data-thread-title-trigger><span data-thread-title>会话状态插件开发</span></div></div></div>
+<div data-app-action-sidebar-thread-row data-app-action-sidebar-thread-kind="local" data-app-action-sidebar-thread-host-id="local" data-app-action-sidebar-thread-id="local:two" data-app-action-sidebar-thread-title="历史任务整理与验收">
+<div class="line"><div class="w-4"><div class="relative flex items-center justify-center"></div></div><div data-thread-title-trigger><span data-thread-title>历史任务整理与验收</span></div></div></div>
+<div data-app-action-sidebar-thread-row data-app-action-sidebar-thread-kind="local" data-app-action-sidebar-thread-host-id="ssh:work" data-app-action-sidebar-thread-id="local:one" data-app-action-sidebar-thread-title="远程项目的同名会话">
+<div class="line"><div class="w-4"><div class="relative flex items-center justify-center"></div></div><div data-thread-title-trigger><span data-thread-title>远程项目的同名会话</span></div></div></div>
+<div data-app-action-sidebar-thread-row data-app-action-sidebar-thread-kind="local" data-app-action-sidebar-thread-id="local:occupied">
+<div class="line"><div class="w-4"><div class="relative"><svg width="16" height="16" data-native-icon><circle cx="8" cy="8" r="5" fill="currentColor"/></svg></div></div><div data-thread-title-trigger><span data-thread-title>带原生图标的会话</span></div></div></div>
+<div data-app-action-sidebar-thread-row data-app-action-sidebar-thread-kind="chatgpt" data-app-action-sidebar-thread-id="chat-one">
+<div class="line"><div class="w-4"></div><div data-thread-title-trigger><span data-thread-title>ChatGPT 会话</span></div></div></div>
+</div>
+<h2>最近</h2><div data-app-action-sidebar-thread-row data-app-action-sidebar-thread-kind="local" data-app-action-sidebar-thread-id="local:recent"><div class="line"><div class="w-4"></div><div data-thread-title-trigger><span data-thread-title>普通会话</span></div></div></div>
+</nav>
+<main><p>项目会话的左侧标记，用于记录任务进展。</p><p>本页使用当前客户端公开在 DOM 中的数据属性和预留槽结构。</p></main>
+<script>window.navigationClicks=0;document.querySelector('nav').onclick=()=>window.navigationClicks++;</script>
+</html>

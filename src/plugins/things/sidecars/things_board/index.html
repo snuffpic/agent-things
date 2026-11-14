@@ -1,0 +1,1878 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Things 会话任务进度 · 任务进展</title>
+  <style>
+    :root {
+      --accent: #0169cc;
+      --accent-hover: #005bb3;
+      --at-ink: #e6edf3;
+      --at-secondary: #a0a6ad;
+      --at-muted: #828c96;
+      --at-note: #bbc3ca;
+      --at-track: #ffffff12;
+      --at-line: #ffffff14;
+      --at-input-border: #ffffff18;
+      --at-input-bg: #ffffff03;
+      --at-hover: #ffffff09;
+      --at-selected: #ffffff10;
+      --at-source-bg: #ffffff0a;
+      --at-number-line: #ffffff25;
+      --at-thumb: #e6edf3;
+      --at-thumb-edge: #ffffff30;
+      --danger: #ef7777;
+      --error: #f7ad86;
+      --at-panel-bg: #0e1318;
+      font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--at-ink);
+      color-scheme: dark;
+    }
+    * {
+      box-sizing: border-box;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    *::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+    button, input, textarea {
+      font: inherit;
+      color: inherit;
+    }
+    button {
+      cursor: pointer;
+    }
+    [hidden] {
+      display: none !important;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      min-height: 100vh;
+      background: var(--at-panel-bg, #0e1318);
+      color: var(--at-ink);
+      font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      box-sizing: border-box;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .shell {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      min-height: 100vh;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: var(--at-panel-bg, #0e1318);
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      padding: 18px 20px 24px;
+      box-sizing: border-box;
+    }
+
+    .title-heading {
+      display: flex;
+      flex: none;
+      align-items: flex-start;
+      gap: 10px;
+      border-radius: 5px;
+      outline-offset: 4px;
+      cursor: default;
+      transition: max-height 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease, transform 0.22s ease, margin 0.22s ease;
+      max-height: 60px;
+      opacity: 1;
+      transform: translateY(0);
+      overflow: visible;
+    }
+    .shell.is-scrolled .title-heading {
+      height: 0;
+      min-height: 0;
+      max-height: 0;
+      opacity: 0;
+      visibility: hidden;
+      margin: 0;
+      padding: 0;
+      transform: translateY(-20px);
+      overflow: hidden;
+      pointer-events: none;
+    }
+    h2.title {
+      font-size: 24px;
+      font-weight: 650;
+      line-height: 1.3;
+      letter-spacing: -0.5px;
+      margin: 0;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+      color: var(--at-ink);
+    }
+
+    .title-progress {
+      display: flex;
+      flex: none;
+      width: 32px;
+      height: 32px;
+      margin-top: 1px;
+    }
+    .title-progress svg {
+      width: 32px;
+      height: 32px;
+      display: block;
+    }
+    .title-progress text {
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      pointer-events: none;
+    }
+    .title-progress text.progress-unknown {
+      opacity: 1;
+    }
+    .title-heading:hover .progress-pie,
+    .title-heading:focus-visible .progress-pie {
+      opacity: 0;
+    }
+    .title-heading:hover text,
+    .title-heading:focus-visible text {
+      opacity: 1;
+    }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      min-height: 0;
+      margin-top: 14px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      transition: margin-top 0.22s ease;
+    }
+    .shell.is-scrolled .panel-body {
+      margin-top: 0;
+    }
+    .panel-body {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+      padding-right: 2px;
+    }
+    .panel-body::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .panel-body::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .panel-body::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.18);
+      border-radius: 4px;
+    }
+
+    .view {
+      padding-bottom: 4px;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .status-block {
+      transform: translateY(2px);
+      min-width: 0;
+      flex: 1;
+    }
+    .status-name {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      line-height: 18px;
+      font-size: 13px;
+      min-width: 0;
+    }
+    .status-name > span:last-child {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .state-dot {
+      width: 10px;
+      height: 10px;
+      border: 1.5px solid;
+      border-radius: 50%;
+      flex: none;
+      background: transparent !important;
+    }
+    .timestamp {
+      font-size: 11px;
+      line-height: 16px;
+      color: var(--at-secondary);
+      margin-top: 2px;
+      margin-left: 17px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .score {
+      display: flex;
+      align-items: baseline;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      flex: none;
+    }
+    .score-number {
+      font-size: 39px;
+      font-weight: 550;
+      letter-spacing: -1px;
+      color: var(--at-ink);
+    }
+    .score-unit {
+      font-size: 15px;
+      color: var(--at-secondary);
+      margin-left: 3px;
+    }
+
+    .meter {
+      height: 4px;
+      background: var(--at-track);
+      border-radius: 3px;
+      margin: 10px 0 8px;
+      overflow: hidden;
+    }
+    .meter::after {
+      content: "";
+      display: block;
+      height: 100%;
+      width: var(--fill, 0%);
+      background: var(--mark, #b4b7be);
+      border-radius: inherit;
+    }
+
+    .totals-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      color: var(--at-secondary);
+    }
+    .totals, .source-label {
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 16px;
+    }
+    .source-label {
+      margin-left: auto;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .summary-block {
+      position: relative;
+      margin: 10px 0;
+      outline: none;
+    }
+    .overview-summary {
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--at-note);
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .summary-expand {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      border: 0;
+      background: linear-gradient(to right, transparent, var(--at-panel-bg) 18px);
+      padding: 0 0 0 22px;
+      color: var(--at-secondary);
+      font-size: 12px;
+      line-height: 21.45px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .summary-expand:hover {
+      color: inherit;
+    }
+    .summary-block.expanded .overview-summary {
+      display: block;
+      -webkit-line-clamp: unset;
+    }
+    .summary-block.expanded .summary-expand {
+      position: static;
+      display: block;
+      margin-left: auto;
+      padding-left: 0;
+      background: none;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 17px;
+      margin: 12px 0 14px;
+    }
+    .primary {
+      border: 0;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 9px;
+      padding: 9px 14px;
+      font-weight: 550;
+      min-height: 36px;
+      font-size: 13px;
+      transition: background 0.15s ease;
+    }
+    .primary:hover {
+      background: var(--accent-hover);
+      color: #fff;
+    }
+    .text-button, .clear, .back {
+      border: 0;
+      background: none;
+      padding: 0;
+      color: var(--at-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      transition: color 0.12s ease;
+    }
+    .text-button:hover, .back:hover {
+      color: inherit;
+    }
+    .actions .clear {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--at-muted);
+      white-space: nowrap;
+      position: relative;
+    }
+    .actions .clear:hover {
+      color: var(--danger);
+    }
+    .clear-tooltip {
+      position: absolute;
+      right: 0;
+      bottom: calc(100% + 8px);
+      padding: 6px 9px;
+      border-radius: 6px;
+      background: var(--at-panel-bg);
+      color: var(--at-secondary);
+      border: 1px solid var(--at-line);
+      font-size: 11px;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.08s, visibility 0s;
+      white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+      z-index: 10;
+    }
+    .clear:is(:hover, :focus-visible) .clear-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transition-delay: 0.1s;
+    }
+
+    .section-head {
+      border-top: 1px solid var(--at-line);
+      padding-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .section-head h3 {
+      font-size: 12px;
+      font-weight: 550;
+      margin: 0;
+      color: var(--at-ink);
+    }
+    .remaining-toggle {
+      border: 0;
+      background: none;
+      padding: 0;
+    }
+    .row-detail {
+      font-size: 12px;
+      font-weight: 400;
+      line-height: 18px;
+      color: var(--at-secondary);
+      white-space: nowrap;
+    }
+
+    .task-row {
+      position: relative;
+      display: flex;
+      gap: 9px;
+      align-items: flex-start;
+      padding: 9px 0;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .task-dot {
+      width: 12px;
+      height: 12px;
+      border: 1.3px solid #c89b38;
+      border-radius: 50%;
+      margin-top: 4px;
+      flex: none;
+    }
+    .task-row[data-status="done"] .task-dot {
+      border-color: #548eea;
+      background: rgba(84, 142, 234, 0.22);
+    }
+    .task-content {
+      min-width: 0;
+      flex: 1;
+    }
+    .task-title {
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--at-ink);
+      word-break: break-word;
+    }
+    .task-meta {
+      font-size: 10px;
+      color: var(--at-secondary);
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+    .task-source {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      padding-left: 25px;
+      background: linear-gradient(to right, transparent, var(--at-panel-bg, #0e1318) 25px);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(6px);
+      transition: opacity 0.16s ease, transform 0.16s ease;
+    }
+    .task-row:hover .task-source,
+    .task-row:focus-within .task-source {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+    .task-source > button {
+      border: 0;
+      border-radius: 6px;
+      background: var(--at-source-bg, #ffffff0a);
+      color: var(--at-ink);
+      padding: 4px 10px;
+      font-size: 11px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .task-source > button:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+
+    .empty {
+      font-size: 12px;
+      color: var(--at-secondary);
+      padding: 8px 0;
+      text-align: left;
+    }
+
+    .quiet-row {
+      border: 0;
+      border-top: 1px solid var(--at-line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      background: none;
+      color: inherit;
+      padding: 10px 0;
+      text-align: left;
+      font-size: 12px;
+      cursor: pointer;
+      transition: color 0.15s ease;
+    }
+    .quiet-row span:last-child {
+      color: var(--at-secondary);
+    }
+    .quiet-row:hover {
+      color: var(--at-ink);
+    }
+
+    .overview-bottom {
+      margin-top: 8px;
+    }
+
+    /* Views */
+    .view-heading {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--at-panel-bg);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0 10px;
+      margin-bottom: 6px;
+    }
+    .view-heading h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0;
+      color: var(--at-ink);
+    }
+    .view-heading .back {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--at-secondary);
+      padding: 4px 8px;
+      margin-right: -6px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: color 0.12s, background 0.12s;
+    }
+    .view-heading .back:hover {
+      color: var(--at-ink);
+      background: var(--at-hover);
+    }
+    .view-heading::after {
+      content: "";
+      position: absolute;
+      left: -20px;
+      right: -20px;
+      top: 100%;
+      height: 20px;
+      background: linear-gradient(to bottom, var(--at-panel-bg), transparent);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease-out, background 0.15s ease-out;
+    }
+    .shell.is-scrolled .view-heading::after {
+      opacity: 1;
+    }
+
+    /* Edit View */
+    .choices-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+    .choice {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 8px 9px;
+      border: 0;
+      border-radius: 7px;
+      background: none;
+      color: inherit;
+      text-align: left;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+    .choice:hover {
+      background: var(--at-hover);
+    }
+    .choice[aria-pressed="true"] {
+      background: var(--at-selected);
+    }
+    .dot {
+      width: 12px;
+      height: 12px;
+      border: 1.6px solid var(--mark);
+      border-radius: 50%;
+      flex: none;
+    }
+    .choice[aria-pressed="true"] .dot {
+      background: var(--mark);
+      box-shadow: inset 0 0 0 2px var(--at-panel-bg);
+    }
+
+    .progress-section {
+      margin-top: 20px;
+    }
+    .progress-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .label {
+      font-size: 11px;
+      color: var(--at-secondary);
+    }
+    .number-wrap {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--at-secondary);
+    }
+    .progress-number {
+      appearance: textfield;
+      color: var(--at-ink);
+      width: 65px;
+      padding: 2px 3px 4px;
+      background: none;
+      border: 0;
+      border-bottom: 1px solid var(--at-number-line);
+      font-size: 27px;
+      font-weight: 550;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .progress-number::-webkit-inner-spin-button {
+      appearance: none;
+    }
+    .range {
+      position: relative;
+      height: 51px;
+      margin-top: 2px;
+      --mark: #c89b38;
+    }
+    .range-track {
+      position: absolute;
+      left: 7px;
+      right: 7px;
+      top: 10px;
+      height: 4px;
+      border-radius: 3px;
+      background: linear-gradient(to right, var(--mark) var(--fill), var(--at-track) var(--fill));
+      pointer-events: none;
+    }
+    .range-input {
+      position: relative;
+      appearance: none;
+      width: 100%;
+      height: 24px;
+      background: transparent;
+      margin: 0;
+      display: block;
+      padding: 0;
+      cursor: pointer;
+    }
+    .range-input::-webkit-slider-runnable-track {
+      height: 4px;
+      background: transparent;
+    }
+    .range-input::-webkit-slider-thumb {
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      margin-top: -5px;
+      background: var(--at-thumb);
+      border: 2px solid var(--at-panel-bg);
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px var(--at-thumb-edge);
+    }
+    .range-nodes {
+      position: absolute;
+      left: 7px;
+      right: 7px;
+      top: 0;
+      pointer-events: none;
+    }
+    .range-node {
+      position: absolute;
+      left: var(--at);
+      top: 8px;
+      width: 0;
+      font-size: 10px;
+      color: var(--at-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+    .range-node::before {
+      content: "";
+      display: block;
+      width: 7px;
+      height: 7px;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: var(--at-panel-bg);
+      border: 1px solid var(--at-secondary);
+      box-shadow: 0 0 0 1px var(--at-panel-bg);
+    }
+    .range-node-label {
+      position: absolute;
+      top: 19px;
+      left: 0;
+      transform: translateX(-50%);
+    }
+    .range-node:first-child .range-node-label {
+      transform: none;
+    }
+    .range-node:last-child .range-node-label {
+      transform: translateX(-100%);
+    }
+    .unknown-row {
+      display: flex;
+      justify-content: flex-end;
+      margin: 2px 0 18px;
+    }
+    .unknown {
+      font-size: 11px;
+      color: var(--at-secondary);
+      border: 0;
+      background: none;
+      padding: 0;
+      cursor: pointer;
+    }
+    .unknown:hover {
+      color: var(--at-ink);
+    }
+
+    .note-label {
+      display: block;
+      font-size: 11px;
+      color: var(--at-secondary);
+      margin-bottom: 8px;
+    }
+    textarea.note-input {
+      display: block;
+      width: 100%;
+      resize: vertical;
+      min-height: 66px;
+      max-height: 140px;
+      background: var(--at-input-bg);
+      color: inherit;
+      border: 1px solid var(--at-input-border);
+      border-radius: 8px;
+      padding: 9px;
+      line-height: 1.6;
+      font-size: 12px;
+    }
+    textarea.note-input:focus-visible {
+      outline: none;
+    }
+
+    .edit-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 18px;
+      align-items: center;
+      padding: 21px 0 16px;
+    }
+
+    .feedback-msg {
+      font-size: 11px;
+      color: var(--at-secondary);
+      margin-top: 10px;
+      text-align: right;
+    }
+    .feedback-msg.error {
+      color: var(--error);
+    }
+    .feedback-msg.success {
+      color: #548eea;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --at-ink: #22272e;
+        --at-secondary: #576374;
+        --at-muted: #667383;
+        --at-note: #46515f;
+        --at-track: #c3ccd6;
+        --at-line: #dfe4ea;
+        --at-input-border: #c7d0da;
+        --input-bg: #f7f9fb;
+        --hover: #f0f3f6;
+        --selected: #e9edf2;
+        --source-bg: #e9eef4;
+        --number-line: #b6c1ce;
+        --thumb: var(--accent);
+        --thumb-edge: var(--accent);
+        --danger: #bf2f3a;
+        --error: #b13a2d;
+        --panel-bg: #fff;
+        color: var(--at-ink);
+        color-scheme: light;
+      }
+      .shell {
+        --panel-bg: #fff;
+        border-color: #dfe4ea;
+        box-shadow: none;
+      }
+    }
+  </style>
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <div class="shell" id="agentThingsCard">
+    <div class="title-heading" tabindex="0">
+      <span class="title-progress" id="titleProgress">
+        <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" style="overflow:visible">
+      <circle cx="12" cy="12" r="10" fill="none" stroke="#b4b7be" stroke-width="1.6" opacity="0.85"/>
+      <text x="12" y="12.4" text-anchor="middle" dominant-baseline="middle" fill="#b4b7be" class="progress-unknown" style="font:600 6.4px -apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:-0.2px;font-variant-numeric:tabular-nums">—</text>
+    </svg>
+      </span>
+      <h2 class="title" id="cardTitle" title="当前会话">当前会话</h2>
+    </div>
+
+    <div class="panel-body" id="panelBody">
+      <!-- Overview View -->
+      <div id="overviewView" class="view overview">
+        <div class="status-line">
+          <div class="status-block">
+            <div class="status-name">
+              <span class="state-dot" id="overviewDot" style="border-color:#b4b7be; background:transparent;"></span>
+              <span id="overviewStatusLabel">尚未开始</span>
+            </div>
+            <div class="timestamp" id="overviewTimestamp">--/-- --:--</div>
+          </div>
+          <div class="score">
+            <span class="score-number" id="overviewScoreNumber">—</span>
+            <span class="score-unit" hidden>%</span>
+          </div>
+        </div>
+
+        <div class="meter" id="overviewMeter" style="--fill:0%; --mark:#b4b7be;"></div>
+
+        <div class="totals-row">
+          <span class="totals" id="overviewTotals">暂无任务统计</span>
+          <span class="source-label">自动分析</span>
+        </div>
+
+        <div class="summary-block" id="summaryBlock" tabindex="0">
+          <div class="overview-summary" id="overviewSummary">尚未记录进展</div>
+          <button class="summary-expand" id="summaryExpand" onclick="toggleSummaryExpand()" hidden>查看全部</button>
+        </div>
+
+        <div class="actions">
+          <button class="primary" id="btnAnalyze" onclick="onAnalyzeClick()">更新进度</button>
+          <button class="text-button" onclick="switchToEdit()">手动调整</button>
+          <button class="clear" aria-label="清除进度" onclick="onClearClick()">
+            <span class="clear-tooltip" role="tooltip">立即清除进度与任务记录</span>
+            清除进度
+          </button>
+        </div>
+
+        <!-- Section Head -->
+        <div class="section-head">
+          <h3 id="remainingTasksHeading">剩余任务 0</h3>
+        </div>
+
+        <!-- Tasks list -->
+        <div class="tasks-list" id="uncompletedTasksList">
+          <div class="empty">点击更新进度，整理这次会话的任务</div>
+        </div>
+
+        <!-- Bottom Rows (1:1 identical to sidebar) -->
+        <div class="overview-bottom">
+          <button class="quiet-row history-open" onclick="switchToHistory()">
+            <span>已完成任务</span>
+            <span class="row-detail" id="historyCount">0 条 ›</span>
+          </button>
+          <button class="quiet-row note-open" onclick="switchToEditNote()">
+            <span>备注</span>
+            <span class="row-detail" id="noteOpenLabel">添加</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- History View -->
+      <div id="historyView" class="view history-view" hidden>
+        <div class="view-heading">
+          <h3>已完成任务</h3>
+          <button class="back" onclick="switchToOverview()">‹ 返回</button>
+        </div>
+        <div class="history-list" id="historyList">
+          <div class="empty">暂无已完成任务</div>
+        </div>
+      </div>
+
+      <!-- Edit View -->
+      <div id="editView" class="view edit-view" hidden>
+        <div class="view-heading">
+          <h3>手动记录会话状态</h3>
+          <button class="back" onclick="switchToOverview()">‹ 返回</button>
+        </div>
+        <div class="choices-list">
+          
+            <button class="choice" id="choice-unstarted"  aria-pressed="false" style="--mark:#9098a2" onclick="selectState('unstarted')">
+              <span class="dot"></span>
+              <span>尚未开始</span>
+            </button>
+          
+            <button class="choice" id="choice-unfinished"  aria-pressed="true" style="--mark:#c89b38" onclick="selectState('unfinished')">
+              <span class="dot"></span>
+              <span>有遗留事项</span>
+            </button>
+          
+            <button class="choice" id="choice-completed"  aria-pressed="false" style="--mark:#548eea" onclick="selectState('completed')">
+              <span class="dot"></span>
+              <span>全部完成</span>
+            </button>
+          
+            <button class="choice" id="choice-pushed" hidden aria-pressed="false" style="--mark:#a17be3" onclick="selectState('pushed')">
+              <span class="dot"></span>
+              <span>全部完成并已推送</span>
+            </button>
+          
+        </div>
+
+        <div class="progress-section">
+          <div class="progress-head">
+            <label class="label" for="inputProgressNumber">进度</label>
+            <div class="number-wrap">
+              <input type="number" id="inputProgressNumber" class="progress-number" min="0" max="100" step="1" value="" placeholder="—" aria-label="手动进度" oninput="onNumberInput(this.value)" onkeydown="onProgressKeyDown(event)">
+              <span>%</span>
+            </div>
+          </div>
+
+          <div class="range" id="rangeBox" style="--mark:#b4b7be; --fill:0%;">
+            <div class="range-track"></div>
+            <div class="range-nodes" aria-hidden="true">
+              
+                <span class="range-node" style="--at:0%;">
+                  <span class="range-node-label">0</span>
+                </span>
+              
+                <span class="range-node" style="--at:25%;">
+                  <span class="range-node-label">25</span>
+                </span>
+              
+                <span class="range-node" style="--at:50%;">
+                  <span class="range-node-label">50</span>
+                </span>
+              
+                <span class="range-node" style="--at:75%;">
+                  <span class="range-node-label">75</span>
+                </span>
+              
+                <span class="range-node" style="--at:100%;">
+                  <span class="range-node-label">100</span>
+                </span>
+              
+            </div>
+            <input type="range" id="inputSlider" class="range-input" min="0" max="100" step="1" value="0" aria-label="拖动调整进度" onpointerdown="onSliderPointerDown()" onpointerup="onSliderPointerUp()" onpointercancel="onSliderPointerUp()" oninput="onSliderInput(this.value)">
+          </div>
+
+          <div class="unknown-row">
+            <button type="button" class="unknown" onclick="onClearProgressClick()">清空进度</button>
+          </div>
+        </div>
+
+        <label class="note-label" for="txtNote">备注</label>
+        <textarea id="txtNote" class="note-input" maxlength="4000" placeholder="记下下一步要做的事…" aria-label="事项备注" oninput="markFormDirty()"></textarea>
+
+        <div id="conflictBox" class="conflict-box" style="display:none; margin: 10px 0; padding: 8px 12px; background: rgba(230, 80, 80, 0.12); border: 1px solid rgba(230, 80, 80, 0.35); border-radius: 6px; font-size: 12px; line-height: 1.5; color: var(--at-ink);">
+          <div id="conflictMsg">保存冲突：内容已被其他入口修改。当前草稿已保留。</div>
+          <div style="margin-top: 6px;">
+            <button type="button" class="text-button" id="btnResolveConflict" style="color: var(--mark); text-decoration: underline; padding: 0;" onclick="resolveConflictKeepDraft()">读取最新版本并保留草稿</button>
+          </div>
+        </div>
+
+        <div class="edit-actions">
+          <button class="text-button" onclick="switchToOverview()">取消</button>
+          <button class="primary" id="btnSaveRecord" onclick="onSaveRecord()">保存记录</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="feedback-msg" id="feedbackMsg" role="status"></div>
+  </div>
+
+  <script>
+    const colors = {"unstarted":"#9098a2","unfinished":"#c89b38","completed":"#548eea","pushed":"#a17be3"};
+    const labels = {"unstarted":"尚未开始","unfinished":"有遗留事项","completed":"全部完成","pushed":"全部完成并已推送"};
+    const taskLabels = {"todo":"待开始","in_progress":"进行中","blocked":"受阻","needs_verification":"待验收","done":"已完成"};
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+    let conversationId = (window.sidecar?.conversationId || new URLSearchParams(window.location.search).get("conversationId") || "").trim();
+    window.conversationId = conversationId;
+    const connection = {"origin":"http://127.0.0.1:29888","conversationId":conversationId,"title":"当前会话","loadToken":null};
+    let currentSessionTitle = '';
+
+    function isGenericTitle(val) {
+      const text = String(val || '').trim();
+      return !text || text === '当前会话' || text === 'Agent Things 会话任务进度';
+    }
+
+    function applyCardTitle(nextTitle, remember = true) {
+      const clean = String(nextTitle || '').trim();
+      if (remember && !isGenericTitle(clean)) {
+        currentSessionTitle = clean;
+      }
+      const display = !isGenericTitle(clean)
+        ? clean
+        : (!isGenericTitle(currentSessionTitle) ? currentSessionTitle : '当前会话');
+      const titleEl = document.getElementById('cardTitle');
+      if (titleEl) {
+        titleEl.textContent = display;
+        titleEl.title = display;
+      }
+      document.title = display + ' · 任务进展';
+    }
+    let currentRevision = 0;
+    let savedRevision = 0;
+    let draftBaseRevision = savedRevision;
+    let isFormDirty = false;
+    let currentState = "unstarted";
+    let currentProgress = null;
+    let isDraggingSlider = false;
+    let hostChannelPort = null;
+
+    function resetScroll() {
+      const panel = document.getElementById('panelBody');
+      const shell = document.getElementById('agentThingsCard');
+      if (panel) panel.scrollTop = 0;
+      if (shell) shell.classList.remove('is-scrolled');
+    }
+
+    function showConflictNotice(msg) {
+      const box = document.getElementById('conflictBox');
+      const text = document.getElementById('conflictMsg');
+      if (box && text) {
+        text.textContent = msg || '保存冲突：内容已被其他入口修改。当前草稿已保留。';
+        box.style.display = 'block';
+      }
+      showFeedback('保存失败：检测到版本冲突', true);
+    }
+
+    function hideConflictNotice() {
+      const box = document.getElementById('conflictBox');
+      if (box) box.style.display = 'none';
+    }
+
+    function resolveConflictKeepDraft() {
+      draftBaseRevision = savedRevision;
+      hideConflictNotice();
+      showFeedback('基准版本已对齐最新状态，再次点击保存即可提交当前草稿。');
+    }
+
+    function switchToEdit() {
+      resetScroll();
+      draftBaseRevision = savedRevision;
+      isFormDirty = false;
+      hideConflictNotice();
+      document.getElementById('overviewView').hidden = true;
+      document.getElementById('historyView').hidden = true;
+      document.getElementById('editView').hidden = false;
+      clearFeedback();
+    }
+
+    function switchToEditNote() {
+      switchToEdit();
+      setTimeout(function() {
+        const txt = document.getElementById('txtNote');
+        if (txt) txt.focus();
+      }, 50);
+    }
+
+    function switchToHistory() {
+      resetScroll();
+      document.getElementById('overviewView').hidden = true;
+      document.getElementById('editView').hidden = true;
+      document.getElementById('historyView').hidden = false;
+      clearFeedback();
+    }
+
+    function switchToOverview() {
+      resetScroll();
+      document.getElementById('editView').hidden = true;
+      document.getElementById('historyView').hidden = true;
+      document.getElementById('overviewView').hidden = false;
+      isFormDirty = false;
+      hideConflictNotice();
+      clearFeedback();
+      checkSummaryOverflow();
+    }
+
+    function markFormDirty() {
+      isFormDirty = true;
+    }
+
+    function selectState(stateKey, isRemoteSync = false) {
+      if (!isRemoteSync) markFormDirty();
+      currentState = stateKey;
+      for (const key of Object.keys(labels)) {
+        const btn = document.getElementById('choice-' + key);
+        if (btn) btn.setAttribute('aria-pressed', String(key === stateKey));
+      }
+      if (!isRemoteSync) {
+        if (stateKey === 'unstarted') {
+          updateProgressVal(0);
+        } else if (stateKey === 'completed' || stateKey === 'pushed') {
+          updateProgressVal(100);
+        }
+      }
+      updateRangeMark(colors[stateKey] || colors.unfinished);
+    }
+
+    function onNumberInput(val) {
+      markFormDirty();
+      const num = val === '' ? null : Number(val);
+      if (num !== null && !isNaN(num)) {
+        const clamped = Math.max(0, Math.min(100, Math.round(num)));
+        updateProgressVal(clamped);
+        const nextState = clamped === 100 ? (currentState === 'pushed' ? 'pushed' : 'completed')
+          : (clamped === 0 && currentState === 'unstarted' ? 'unstarted' : 'unfinished');
+        selectState(nextState);
+      } else {
+        updateProgressVal(null);
+      }
+    }
+
+    function onProgressKeyDown(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        onSaveRecord();
+      }
+    }
+
+    function onSliderPointerDown() {
+      isDraggingSlider = true;
+    }
+
+    function onSliderPointerUp() {
+      isDraggingSlider = false;
+    }
+
+    function onSliderInput(val) {
+      markFormDirty();
+      const value = Number(val);
+      const nearest = Math.round(value / 25) * 25;
+      const snapped = (isDraggingSlider && Math.abs(value - nearest) <= 2) ? nearest : value;
+      updateProgressVal(snapped);
+      const nextState = snapped === 100 ? (currentState === 'pushed' ? 'pushed' : 'completed')
+        : (snapped === 0 && currentState === 'unstarted' ? 'unstarted' : 'unfinished');
+      selectState(nextState);
+    }
+
+    function onClearProgressClick() {
+      updateProgressVal(null);
+    }
+
+    function updateProgressVal(val) {
+      currentProgress = val;
+      const slider = document.getElementById('inputSlider');
+      const numberInput = document.getElementById('inputProgressNumber');
+      const rangeBox = document.getElementById('rangeBox');
+      if (slider) slider.value = val !== null ? val : 0;
+      if (numberInput) numberInput.value = val !== null ? val : '';
+      if (rangeBox) rangeBox.style.setProperty('--fill', (val !== null ? val : 0) + '%');
+    }
+
+    function updateRangeMark(markColor) {
+      const rangeBox = document.getElementById('rangeBox');
+      if (rangeBox) rangeBox.style.setProperty('--mark', markColor);
+    }
+
+    function toggleAllRemaining() {
+      const hiddenRows = document.querySelectorAll('.remaining-hidden');
+      const btn = document.getElementById('btnToggleAllRemaining');
+      const isExpanded = btn?.getAttribute('data-expanded') === 'true';
+      hiddenRows.forEach(function(row) { row.hidden = isExpanded; });
+      if (btn) {
+        btn.setAttribute('data-expanded', String(!isExpanded));
+        const total = hiddenRows.length + 3;
+        btn.textContent = isExpanded ? ('查看全部 ' + total + ' 条 ›') : '收起 ›';
+      }
+    }
+
+    function toggleSummaryExpand() {
+      const block = document.getElementById('summaryBlock');
+      const btn = document.getElementById('summaryExpand');
+      if (!block || !btn) return;
+      const isExpanded = block.classList.toggle('expanded');
+      btn.textContent = isExpanded ? '收起' : '查看全部';
+    }
+
+    function checkSummaryOverflow() {
+      const summaryEl = document.getElementById('overviewSummary');
+      const btn = document.getElementById('summaryExpand');
+      if (summaryEl && btn) {
+        btn.hidden = summaryEl.scrollHeight <= summaryEl.clientHeight + 2;
+      }
+    }
+
+    async function onSourceClick(button) {
+      if (!button || button.disabled) return;
+      const originalLabel = button.textContent || '查看来源';
+      try {
+        const sourceJson = button.getAttribute('data-source');
+        if (!sourceJson) return;
+        const source = JSON.parse(sourceJson);
+        button.disabled = true;
+        button.textContent = '定位中...';
+
+        // 1. 优先通过 Sidecar 后台 /api/locate 直达宿主 CDP，等待真实跳转与定位结果
+        let locateHandled = false;
+        try {
+          const resp = await fetch('/api/locate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conversationId, source }),
+          });
+          const data = await resp.json().catch(() => null);
+          if (resp.ok && data) {
+            locateHandled = true;
+            if (data.located) {
+              showFeedback(data.message || '已跳转并定位到会话来源');
+              return;
+            }
+            showFeedback(data.message || '未找到对应会话消息', true);
+            return;
+          }
+        } catch (_) {}
+
+        // 2. Sidecar HTTP 不可用时降级到 Port / Parent 消息通道
+        if (!locateHandled) {
+          let posted = false;
+          if (hostChannelPort) {
+            try {
+              hostChannelPort.postMessage({
+                type: 'AGENT_THINGS_LOCATE',
+                conversationId,
+                source,
+              });
+              posted = true;
+            } catch (_) {}
+          }
+          if (window.parent && window.parent !== window) {
+            try {
+              window.parent.postMessage({
+                type: 'AGENT_THINGS_LOCATE',
+                conversationId,
+                source,
+              }, '*');
+              posted = true;
+            } catch (_) {}
+          }
+          if (posted) {
+            showFeedback('已发送定位请求');
+            return;
+          }
+        }
+
+        showFeedback('未能连接宿主定位接口', true);
+      } catch (err) {
+        showFeedback('定位失败：' + (err.message || '未知错误'), true);
+      } finally {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
+    }
+
+    function showFeedback(msg, isError = false) {
+      const el = document.getElementById('feedbackMsg');
+      if (!el) return;
+      el.textContent = msg;
+      el.className = 'feedback-msg ' + (isError ? 'error' : 'success');
+      setTimeout(function() { if (el.textContent === msg) el.textContent = ''; }, 4000);
+    }
+
+    function clearFeedback() {
+      const el = document.getElementById('feedbackMsg');
+      if (el) el.textContent = '';
+    }
+
+    let sseSource = null;
+    let sseReconnectTimer = null;
+    let authTicket = null;
+    let serviceOrigin = connection?.origin || null;
+    const pendingActions = new Map();
+
+    async function sendProxyAction(action, payload = {}) {
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: conversationId,
+          action: action,
+          payload: payload,
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || '操作失败');
+      return data;
+    }
+
+    function onIncomingHostMessage(data) {
+      if (!data || typeof data !== 'object') return;
+
+      if (data.type === 'AGENT_THINGS_AUTH_RESPONSE' && data.nonce) {
+        const req = pendingActions.get(data.nonce);
+        if (req) {
+          clearTimeout(req.timer);
+          pendingActions.delete(data.nonce);
+          if (data.origin) serviceOrigin = data.origin;
+          req.resolve(data);
+        }
+        return;
+      }
+
+      if (data.type === 'AGENT_THINGS_ACTION_RESULT' && data.nonce) {
+        const req = pendingActions.get(data.nonce);
+        if (req) {
+          clearTimeout(req.timer);
+          pendingActions.delete(data.nonce);
+          if (data.success) {
+            req.resolve(data.data || {});
+          } else {
+            req.reject(new Error(data.error || '操作失败'));
+          }
+        }
+        return;
+      }
+    }
+
+    async function requestHostAuth() {
+      try {
+        const res = await fetch('/api/ticket?conversationId=' + encodeURIComponent(conversationId));
+        if (!res.ok) throw new Error('获取连接凭据失败');
+        return await res.json();
+      } catch (err) {
+        throw new Error('申请订阅票据失败: ' + err.message);
+      }
+    }
+
+    window.addEventListener('message', (event) => {
+      try {
+        onIncomingHostMessage(event.data);
+      } catch (_) {}
+    });
+
+    async function onSaveRecord() {
+      const btn = document.getElementById('btnSaveRecord');
+      const noteVal = document.getElementById('txtNote')?.value ?? '';
+      try {
+        if (btn) btn.disabled = true;
+        showFeedback('正在保存…');
+        const reply = await sendProxyAction('update', {
+          expectedRevision: draftBaseRevision,
+          record: {
+            state: currentState,
+            progress: currentProgress,
+            note: noteVal
+          }
+        });
+        // 修复：sendProxyAction 已解包 data，调用方应读 reply.session.recordRevision
+        const newRev = reply?.session?.recordRevision;
+        if (typeof newRev === 'number') {
+          savedRevision = newRev;
+          draftBaseRevision = newRev;
+          currentRevision = newRev;
+        }
+        isFormDirty = false;
+        hideConflictNotice();
+        showFeedback('✓ 保存成功');
+        setTimeout(switchToOverview, 600);
+      } catch (err) {
+        const isConflict = err.message && (err.message.includes('其他窗口更新') || err.message.includes('版本已被') || err.message.includes('409') || err.message.includes('conflict') || err.message.includes('revision mismatch'));
+        if (isConflict) {
+          showConflictNotice('保存冲突：内容已被其他入口修改。当前草稿已保留。');
+        } else {
+          showFeedback('保存失败: ' + err.message, true);
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function onClearClick() {
+      if (!confirm('确定要清除本会话的任务进度和记录吗？')) return;
+      try {
+        showFeedback('正在清除…');
+        const reply = await sendProxyAction('clear', {
+          expectedRevision: draftBaseRevision,
+        });
+        const newRev = reply?.session?.recordRevision;
+        if (typeof newRev === 'number') {
+          savedRevision = newRev;
+          draftBaseRevision = newRev;
+          currentRevision = newRev;
+        }
+        isFormDirty = false;
+        hideConflictNotice();
+        showFeedback('✓ 已清空进度');
+      } catch (err) {
+        showFeedback('清除失败: ' + err.message, true);
+      }
+    }
+
+    function handleRemoteSessionUpdate(payload) {
+      if (!payload) return;
+      const s = payload.session || payload;
+      const effectiveProgress = typeof s.progress === 'number' ? s.progress : typeof s.progress?.progress === 'number' ? s.progress.progress : (typeof s === 'number' ? s : null);
+      const effectiveState = s.state || s.progress?.state || (effectiveProgress === 100 ? 'completed' : (effectiveProgress > 0 ? 'unfinished' : 'unstarted'));
+      const effectiveTasks = Array.isArray(s.tasks) ? s.tasks : (Array.isArray(s.progress?.tasks) ? s.progress.tasks : (s.analysis?.ledger?.tasks || []));
+      const effectiveNote = s.note || s.progress?.note || '';
+      const effectiveSummary = s.summary || s.progress?.summary || s.analysis?.ledger?.summary || '';
+      const effectiveTitle = !isGenericTitle(s.title)
+        ? String(s.title).trim()
+        : (!isGenericTitle(s.progress?.title) ? String(s.progress.title).trim() : currentSessionTitle);
+
+      if (typeof s.recordRevision === 'number') savedRevision = Math.max(savedRevision, s.recordRevision);
+      else if (typeof s.progress?.revision === 'number') savedRevision = Math.max(savedRevision, s.progress.revision);
+      else if (typeof s.revision === 'number') savedRevision = Math.max(savedRevision, s.revision);
+
+      // 若未处于草稿编辑中，基准版本与当前展示版本同步更新
+      if (!isFormDirty) {
+        currentRevision = savedRevision;
+        draftBaseRevision = savedRevision;
+      }
+
+      const analyzing = Boolean(s.analyzing || s.analysisStatus?.status === 'pending');
+      const analysisStatus = s.analysisStatus;
+      const btnAnalyze = document.getElementById('btnAnalyze');
+      if (btnAnalyze) {
+        if (analyzing) {
+          btnAnalyze.disabled = true;
+          btnAnalyze.textContent = '正在分析…';
+        } else {
+          btnAnalyze.disabled = false;
+          btnAnalyze.textContent = '更新进度';
+          if (analysisStatus?.status === 'failed') {
+            showFeedback('分析未完成: ' + (analysisStatus.error || '执行异常'), true);
+          }
+        }
+      }
+
+      // 仅在非 dirty 编辑态下将远端状态刷入表单与展示
+      if (!isFormDirty) {
+        applyFullProgressToUI({
+          state: effectiveState,
+          progress: effectiveProgress,
+          tasks: effectiveTasks,
+          note: effectiveNote,
+          summary: effectiveSummary,
+          title: effectiveTitle,
+          revision: currentRevision,
+          updatedAt: s.updatedAt || s.progress?.updatedAt,
+        });
+      }
+    }
+
+    function applyFullProgressToUI(data) {
+      if (!data) return;
+      currentRevision = data.revision ?? currentRevision;
+      const nextState = data.state || (data.progress === 100 ? 'completed' : data.progress > 0 ? 'unfinished' : 'unstarted');
+      const nextProgress = data.progress ?? null;
+
+      if (!isFormDirty) {
+        currentState = nextState;
+        currentProgress = nextProgress;
+        updateProgressVal(currentProgress);
+        selectState(currentState, true);
+        const noteInput = document.getElementById('txtNote');
+        if (noteInput) noteInput.value = data.note || '';
+        const noteOpenLabel = document.getElementById('noteOpenLabel');
+        if (noteOpenLabel) noteOpenLabel.textContent = data.note ? '编辑' : '添加';
+      }
+
+      applyCardTitle(data.title);
+
+      const scoreEl = document.getElementById('overviewScoreNumber');
+      if (scoreEl) scoreEl.textContent = currentProgress !== null ? currentProgress : '—';
+      const scoreUnit = document.querySelector('.score-unit');
+      if (scoreUnit) scoreUnit.hidden = currentProgress === null;
+
+      const labelEl = document.getElementById('overviewStatusLabel');
+      if (labelEl) labelEl.textContent = labels[currentState] || currentState;
+      const dotEl = document.getElementById('overviewDot');
+      if (dotEl) {
+        dotEl.style.borderColor = colors[currentState] || colors.unstarted;
+        dotEl.style.background = 'transparent';
+      }
+
+      const timeEl = document.getElementById('overviewTimestamp');
+      if (timeEl) {
+        const rawTime = data.updatedAt || data.progress?.updatedAt;
+        if (rawTime) {
+          const d = new Date(rawTime);
+          if (!isNaN(d.getTime())) {
+            const m = d.getMonth() + 1;
+            const day = d.getDate();
+            const h = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
+            timeEl.textContent = `${m}/${day} ${h}:${min}`;
+          } else {
+            timeEl.textContent = '--/-- --:--';
+          }
+        } else {
+          timeEl.textContent = '--/-- --:--';
+        }
+      }
+
+      const meterEl = document.getElementById('overviewMeter');
+      if (meterEl) {
+        const prog = currentProgress != null ? Math.max(0, Math.min(100, currentProgress)) : 0;
+        meterEl.style.setProperty('--fill', prog + '%');
+        meterEl.style.setProperty('--mark', colors[currentState] || colors.unstarted);
+      }
+
+      const totalCount = data.totalTasks ?? data.tasks?.length ?? 0;
+      const doneCount = data.completedTasks ?? data.tasks?.filter(function(t) { return t.status === 'done'; }).length ?? 0;
+      const totalsEl = document.getElementById('overviewTotals');
+      if (totalsEl) {
+        totalsEl.textContent = totalCount > 0 ? ('已完成 ' + doneCount + ' / ' + totalCount + ' 项任务') : '暂无任务统计';
+      }
+
+      const summaryText = data.summary || data.note || '';
+      const summaryEl = document.getElementById('overviewSummary');
+      if (summaryEl && summaryText) {
+        summaryEl.textContent = summaryText;
+      }
+      checkSummaryOverflow();
+
+      const titleProgress = document.getElementById('titleProgress');
+      if (titleProgress) {
+        const color = colors[currentState] || colors.unstarted;
+        const hasProgress = currentProgress !== null && currentProgress !== undefined && Number.isFinite(currentProgress);
+        const progVal = hasProgress ? Math.max(0, Math.min(100, currentProgress)) : 0;
+
+        let piePath = '';
+        if (hasProgress && progVal > 0) {
+          const angle = (progVal / 100) * Math.PI * 2;
+          const x = (12 + 7.4 * Math.sin(angle)).toFixed(2);
+          const y = (12 - 7.4 * Math.cos(angle)).toFixed(2);
+          piePath = progVal === 100
+            ? '<path d="M12 4.6a7.4 7.4 0 1 1 0 14.8a7.4 7.4 0 1 1 0-14.8" fill="' + color + '" class="progress-pie"/>'
+            : '<path d="M12 12L12 4.6A7.4 7.4 0 ' + (progVal > 50 ? 1 : 0) + ' 1 ' + x + ' ' + y + 'Z" fill="' + color + '" class="progress-pie"/>';
+        }
+
+        const isHundred = progVal === 100;
+        const fontSize = isHundred ? '5.8px' : '6.4px';
+        const letterSpacing = isHundred ? '-0.3px' : '-0.2px';
+
+        titleProgress.innerHTML = '<svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" style="overflow:visible">' +
+          '<circle cx="12" cy="12" r="10" fill="none" stroke="' + color + '" stroke-width="1.6" opacity="' + (hasProgress ? '1' : '0.85') + '"/>' +
+          piePath +
+          '<text x="12" y="12.4" text-anchor="middle" dominant-baseline="middle" fill="' + color + '" class="' + (hasProgress ? '' : 'progress-unknown') + '" style="font:600 ' + fontSize + ' -apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:' + letterSpacing + ';font-variant-numeric:tabular-nums">' + (hasProgress ? (progVal + '%') : '—') + '</text>' +
+          '</svg>';
+      }
+
+      if (Array.isArray(data.tasks)) {
+        const remaining = data.tasks.filter(function(t) { return t.status !== 'done'; });
+        const completed = data.tasks.filter(function(t) { return t.status === 'done'; });
+
+        const remainingHeading = document.getElementById('remainingTasksHeading');
+        if (remainingHeading) remainingHeading.textContent = '剩余任务 ' + remaining.length;
+
+        const toggleBtn = document.getElementById('btnToggleAllRemaining');
+        if (toggleBtn) {
+          toggleBtn.hidden = remaining.length <= 3;
+          toggleBtn.textContent = '查看全部 ' + remaining.length + ' 条 ›';
+          toggleBtn.setAttribute('data-expanded', 'false');
+        }
+
+        const historyCount = document.getElementById('historyCount');
+        if (historyCount) historyCount.textContent = completed.length + ' 条 ›';
+
+        const uncompletedList = document.getElementById('uncompletedTasksList');
+        if (uncompletedList) {
+          let html = '';
+          if (data.tasks.length === 0) {
+            html = '<div class="empty">点击更新进度，整理这次会话的任务</div>';
+          } else if (remaining.length === 0) {
+            html = '<div class="empty">暂无未完成任务</div>';
+          }
+          html += remaining.map(function(task, idx) {
+            const hasSource = task.source && task.source.locator;
+            const badge = taskLabels[task.status] || task.status;
+            return '<div class="task-row ' + (idx >= 3 ? 'remaining-hidden' : '') + '" data-status="' + escapeHtml(task.status) + '" ' + (hasSource ? 'tabindex="0" ' : '') + (idx >= 3 ? 'hidden' : '') + '>' +
+              '<span class="task-dot"></span>' +
+              '<div class="task-content">' +
+                '<div class="task-title">' + escapeHtml(task.title || task.summary || '未命名事项') + '</div>' +
+                '<div class="task-meta">' + escapeHtml(badge) + '</div>' +
+              '</div>' +
+              (hasSource ? '<div class="task-source"><button type="button" data-source="' + escapeHtml(JSON.stringify(task.source)) + '" onclick="onSourceClick(this)">查看来源</button></div>' : '') +
+            '</div>';
+          }).join('');
+          uncompletedList.innerHTML = html;
+        }
+
+        const historyList = document.getElementById('historyList');
+        if (historyList) {
+          let html = '';
+          if (completed.length === 0) {
+            html = '<div class="empty">暂无已完成任务</div>';
+          }
+          html += completed.map(function(task, idx) {
+            const hasSource = task.source && task.source.locator;
+            return '<div class="task-row" data-status="done"' + (hasSource ? ' tabindex="0"' : '') + '>' +
+              '<span class="task-dot"></span>' +
+              '<div class="task-content">' +
+                '<div class="task-title">' + escapeHtml(task.title || task.summary || '已完成事项') + '</div>' +
+                '<div class="task-meta">已完成</div>' +
+              '</div>' +
+              (hasSource ? '<div class="task-source"><button type="button" data-source="' + escapeHtml(JSON.stringify(task.source)) + '" onclick="onSourceClick(this)">查看来源</button></div>' : '') +
+            '</div>';
+          }).join('');
+          historyList.innerHTML = html;
+        }
+      }
+
+      if (hostChannelPort) {
+        try {
+          hostChannelPort.postMessage({
+            type: 'AGENT_THINGS_CARD_UPDATED',
+            conversationId: conversationId,
+            progress: currentProgress,
+            revision: currentRevision,
+            state: currentState,
+          });
+        } catch (_) {}
+      }
+    }
+
+    async function onAnalyzeClick() {
+      const btn = document.getElementById('btnAnalyze');
+      try {
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '正在分析…';
+        }
+        showFeedback('正在开始分析…');
+        await sendProxyAction('analyze', {});
+      } catch (err) {
+        showFeedback('更新失败: ' + err.message, true);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '更新进度';
+        }
+      }
+    }
+
+    async function initEventStream() {
+      if (sseReconnectTimer) {
+        clearTimeout(sseReconnectTimer);
+        sseReconnectTimer = null;
+      }
+      if (sseSource) {
+        try { sseSource.close(); } catch (_) {}
+        sseSource = null;
+      }
+
+      try {
+        const auth = await requestHostAuth();
+        if (!auth?.ticket || !auth?.origin) {
+          scheduleReconnect();
+          return;
+        }
+        authTicket = auth.ticket;
+        serviceOrigin = auth.origin;
+
+        const sseUrl = auth.origin + '/session/events?id=' + encodeURIComponent(conversationId) + '&ticket=' + encodeURIComponent(auth.ticket);
+        const es = new EventSource(sseUrl);
+        sseSource = es;
+
+        es.addEventListener('snapshot', function(ev) {
+          try {
+            const data = JSON.parse(ev.data);
+            handleRemoteSessionUpdate(data);
+          } catch (_) {}
+        });
+
+        es.addEventListener('change', function(ev) {
+          try {
+            const data = JSON.parse(ev.data);
+            handleRemoteSessionUpdate(data);
+          } catch (_) {}
+        });
+
+        es.onerror = function() {
+          try { es.close(); } catch (_) {}
+          sseSource = null;
+          scheduleReconnect();
+        };
+      } catch (_) {
+        scheduleReconnect();
+      }
+    }
+
+    function scheduleReconnect() {
+      if (sseReconnectTimer) return;
+      sseReconnectTimer = setTimeout(function() {
+        sseReconnectTimer = null;
+        initEventStream();
+      }, 2000);
+    }
+
+    function setupScrollListener() {
+      const panel = document.getElementById('panelBody');
+      const shell = document.getElementById('agentThingsCard');
+      if (!panel || !shell) return;
+      panel.addEventListener('scroll', function() {
+        const isScrolled = panel.scrollTop > 8;
+        shell.classList.toggle('is-scrolled', isScrolled);
+      }, { passive: true });
+    }
+
+    
+    function syncThemeWithHost() {
+      try {
+        const bg = getComputedStyle(document.documentElement).getPropertyValue('--background').trim();
+        const fg = getComputedStyle(document.documentElement).getPropertyValue('--foreground').trim();
+        const mutedFg = getComputedStyle(document.documentElement).getPropertyValue('--muted-foreground').trim();
+
+        let isLight = false;
+        if (bg) {
+          if (bg.startsWith('#') && bg.length >= 7) {
+            const r = parseInt(bg.slice(1, 3), 16), g = parseInt(bg.slice(3, 5), 16), b = parseInt(bg.slice(5, 7), 16);
+            if ((0.299 * r + 0.587 * g + 0.114 * b) > 130) isLight = true;
+          } else if (bg.startsWith('rgb')) {
+            const m = bg.match(/\d+/g);
+            if (m && m.length >= 3 && (0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]) > 130) isLight = true;
+          }
+        }
+
+        const root = document.documentElement;
+        if (isLight) {
+          root.style.setProperty('--at-ink', fg || '#22272e');
+          root.style.setProperty('--at-secondary', mutedFg || '#576374');
+          root.style.setProperty('--at-muted', '#667383');
+          root.style.setProperty('--at-note', '#46515f');
+          root.style.setProperty('--at-panel-bg', '#ffffff');
+          root.style.setProperty('--at-line', '#dfe4ea');
+          root.style.setProperty('--at-track', '#c3ccd6');
+          root.style.setProperty('--at-input-border', '#c7d0da');
+          root.style.setProperty('--at-input-bg', '#f6f8fa');
+          root.style.setProperty('--at-hover', '#f3f4f6');
+          root.style.setProperty('--at-source-bg', '#f6f8fa');
+          root.style.setProperty('color-scheme', 'light');
+        } else {
+          root.style.setProperty('--at-ink', fg || '#e6edf3');
+          root.style.setProperty('--at-secondary', '#a0a6ad');
+          root.style.setProperty('--at-muted', '#828c96');
+          root.style.setProperty('--at-note', '#bbc3ca');
+          root.style.setProperty('--at-panel-bg', '#0e1318');
+          root.style.setProperty('--at-line', '#ffffff14');
+          root.style.setProperty('--at-track', '#ffffff12');
+          root.style.setProperty('--at-input-border', '#ffffff18');
+          root.style.setProperty('--at-input-bg', '#ffffff03');
+          root.style.setProperty('--at-hover', '#ffffff09');
+          root.style.setProperty('--at-source-bg', '#ffffff0a');
+          root.style.setProperty('color-scheme', 'dark');
+        }
+      } catch (_) {}
+    }
+
+    function resetToEmptySession(nextTitle) {
+      isFormDirty = false;
+      hideConflictNotice();
+      if (nextTitle !== undefined && !isGenericTitle(nextTitle)) {
+        currentSessionTitle = String(nextTitle).trim();
+      }
+      applyFullProgressToUI({
+        state: 'unstarted',
+        progress: null,
+        tasks: [],
+        note: '',
+        summary: '尚未记录进展',
+        title: currentSessionTitle || '当前会话',
+        revision: 0,
+        updatedAt: null,
+      });
+      const noteInput = document.getElementById('txtNote');
+      if (noteInput) noteInput.value = '';
+    }
+
+    function switchConversation(newId, incomingTitle) {
+      const cleanId = (newId || '').trim();
+      if (!cleanId) return;
+      if (cleanId === conversationId) {
+        if (!isGenericTitle(incomingTitle)) applyCardTitle(incomingTitle);
+        return;
+      }
+      conversationId = cleanId;
+      currentSessionTitle = !isGenericTitle(incomingTitle) ? String(incomingTitle).trim() : '';
+      resetToEmptySession(currentSessionTitle);
+      if (sseSource) {
+        try { sseSource.close(); } catch (_) {}
+        sseSource = null;
+      }
+      fetchSessionSnapshot(conversationId);
+      initEventStream();
+    }
+
+    window.addEventListener('message', (ev) => {
+      if (ev.data?.type === 'theme-change') {
+        setTimeout(syncThemeWithHost, 50);
+      }
+      if (ev.data?.type === 'ANTIGRAVITY_CONVERSATION_CHANGED' || ev.data?.type === 'conversation-change') {
+        const newId = (ev.data?.conversationId || ev.data?.id || '').trim();
+        const incomingTitle = typeof ev.data?.title === 'string' ? ev.data.title.trim() : '';
+        if (newId) {
+          switchConversation(newId, incomingTitle);
+        }
+      }
+    });
+
+    async function fetchSessionSnapshot(convId) {
+      const targetId = convId || conversationId;
+      if (!targetId) return;
+      try {
+        const res = await fetch('/api/session?conversationId=' + encodeURIComponent(targetId));
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.session) {
+            const mergedTitle = !isGenericTitle(data.session.title) ? data.session.title : data.title;
+            handleRemoteSessionUpdate({ ...data.session, title: mergedTitle });
+          } else {
+            resetToEmptySession(data?.title);
+          }
+        } else {
+          resetToEmptySession();
+        }
+      } catch (_) {
+        resetToEmptySession();
+      }
+    }
+
+    function initCard() {
+      syncThemeWithHost();
+      checkSummaryOverflow();
+      setupScrollListener();
+      fetchSessionSnapshot(conversationId);
+      initEventStream();
+
+      // 当在 Antigravity 切换对话时自动刷新对应会话状态
+      setInterval(() => {
+        const currentActive = (window.sidecar?.conversationId || new URLSearchParams(window.location.search).get("conversationId") || "").trim();
+        if (currentActive && currentActive !== conversationId) {
+          switchConversation(currentActive);
+        }
+      }, 1000);
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initCard);
+    } else {
+      initCard();
+    }
+  </script>
+</body>
+</html>

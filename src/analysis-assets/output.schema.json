@@ -1,0 +1,93 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "gitPush": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "not_pushed",
+            "pushed"
+          ]
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "status",
+        "evidenceRefs"
+      ],
+      "additionalProperties": false
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "knownTaskId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "blocked",
+              "needs_verification",
+              "done"
+            ]
+          },
+          "evidenceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 20
+          }
+        },
+        "required": [
+          "knownTaskId",
+          "title",
+          "summary",
+          "status",
+          "evidenceRefs"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "removedTaskIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "仅明确取消、替代或与当前目标无关的既有任务 ID；完成的任务保留。"
+    }
+  },
+  "required": [
+    "summary",
+    "gitPush",
+    "tasks",
+    "removedTaskIds"
+  ],
+  "additionalProperties": false,
+  "description": "本批任务变化；全局计数由程序合并后生成。"
+}

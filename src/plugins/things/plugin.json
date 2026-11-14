@@ -1,0 +1,6 @@
+{
+  "name": "things",
+  "displayName": "Agent Things",
+  "description": "Agent Things 任务进度与状态看板：实时展示会话任务清单、调整进度并同步状态。",
+  "logo": "assets/logo.svg"
+}

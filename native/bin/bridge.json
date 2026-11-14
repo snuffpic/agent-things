@@ -1,0 +1,20 @@
+{
+  "protocol": 1,
+  "architectures": [
+    "arm64",
+    "x86_64"
+  ],
+  "minimumMacOS": "11.0",
+  "sourceSha256": "d917d82343dec8925643416976632333808e50333c997838d94dc67b70600285",
+  "sha256": "4e0873b56859da86f47f0b80f55eb7ab9ac91f5be18704ee88c0d90ec3f1d734",
+  "capabilities": [
+    "snapshot",
+    "watch",
+    "quit",
+    "launch",
+    "show",
+    "wallpaper",
+    "claim-lock",
+    "window-ready"
+  ]
+}

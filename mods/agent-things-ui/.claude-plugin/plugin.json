@@ -1,0 +1,12 @@
+{
+  "name": "agent-things-ui",
+  "version": "0.2.7",
+  "description": "会话任务进度、手动记录、任务来源和备注",
+  "author": {
+    "name": "Agent Things"
+  },
+  "license": "MIT",
+  "skills": [
+    "./"
+  ]
+}

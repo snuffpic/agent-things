@@ -1,0 +1,46 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const {spawn}=require('node:child_process');
+const {once}=require('node:events');
+test('an open Antigravity MCP session stops its service when disabled and cannot recreate it', async t=>{
+ const home=fs.mkdtempSync(path.join(os.tmpdir(),'disable-agy-mcp-'));
+ t.after(()=>fs.rmSync(home,{recursive:true,force:true}));
+ const config=path.join(home,'Library/Application Support/CodexSessionStatus/config.json');
+ fs.mkdirSync(path.dirname(config),{recursive:true});fs.writeFileSync(config,JSON.stringify({enabledApps:['antigravity']}));
+ const state=path.join(home,'state.json'),credentials=state+'.http.json';
+ const child=spawn(process.execPath,[path.resolve(__dirname,'../bin/antigravity-session-status.cjs'),'--no-ui'],{env:{...process.env,HOME:home,SESSION_STATUS_PORT:'0',SESSION_STATUS_STATE_FILE:state},stdio:['pipe','pipe','pipe']});
+ t.after(()=>child.kill());
+ let output='',errors='';child.stdout.on('data',data=>output+=data);child.stderr.on('data',data=>errors+=data);
+ const wait=async fn=>{const end=Date.now()+7000;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('Timed out: '+errors)};
+ child.stdin.write(JSON.stringify({jsonrpc:'2.0',id:0,method:'initialize',params:{protocolVersion:'2024-11-05'}})+'\n');
+ await wait(()=>output.includes('"id":0')&&fs.existsSync(credentials));
+ fs.writeFileSync(config,JSON.stringify({installed:false,enabledApps:[]}));
+ await wait(()=>!fs.existsSync(credentials));
+ child.stdin.write(JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'get_session_progress',arguments:{conversation_id:'test'}}})+'\n');
+ await wait(()=>output.includes('"id":1'));
+ const response=output.trim().split('\n').map(line=>JSON.parse(line)).find(item=>item.id===1);
+ assert.equal(response.result.isError,true);assert.match(response.result.content[0].text,/停用/);
+ assert.equal(fs.existsSync(credentials),false);
+ child.stdin.end();await once(child,'exit');
+});
+
+test('a Codex MCP owner releases its lock and rejects writes after disabling', async t=>{
+ const home=fs.mkdtempSync(path.join(os.tmpdir(),'disable-codex-mcp-'));
+ t.after(()=>fs.rmSync(home,{recursive:true,force:true}));
+ const config=path.join(home,'Library/Application Support/CodexSessionStatus/config.json');
+ fs.mkdirSync(path.dirname(config),{recursive:true});fs.writeFileSync(config,JSON.stringify({enabledApps:['codex']}));
+ const data=path.join(home,'isolated-state'),lock=path.join(data,'agent.lock');
+ const child=spawn(process.execPath,[path.resolve(__dirname,'../bin/codex-session-status.cjs'),'mcp','--data-dir',data,'--port','39998'],{env:{...process.env,HOME:home},stdio:['pipe','pipe','pipe']});
+ t.after(()=>child.kill());let output='';child.stdout.on('data',data=>output+=data);child.stderr.on('data',()=>{});
+ const wait=async fn=>{const end=Date.now()+7000;while(Date.now()<end){if(fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('Timed out')};
+ child.stdin.write(JSON.stringify({jsonrpc:'2.0',id:0,method:'initialize',params:{}})+'\n');
+ await wait(()=>output.includes('"id":0')&&fs.existsSync(lock));
+ fs.writeFileSync(config,JSON.stringify({installed:false,enabledApps:[]}));
+ await wait(()=>!fs.existsSync(lock));
+ child.stdin.write(JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'update_session_progress',arguments:{conversation_id:'test',state:'unfinished',progress:40}}})+'\n');
+ await wait(()=>output.includes('"id":1'));
+ const response=output.trim().split('\n').map(line=>JSON.parse(line)).find(item=>item.id===1);
+ assert.equal(response.result.isError,true);assert.match(response.result.content[0].text,/停用/);
+ assert.equal(fs.existsSync(path.join(data,'manual-state.json')),false);
+ child.stdin.end();await once(child,'exit');
+});

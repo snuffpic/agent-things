@@ -1,6 +1,6 @@
 # Agent Things
 
-English | [简体中文](README.zh-CN.md)
+English | [简体中文](docs/README.zh-CN.md)
 
 When you juggle several sessions at once, or come back to one you haven't touched in a while, Agent Things shows you at a glance how far each session has got and what is still open, so you can decide whether to archive it or keep following up. You can also jump from any task back to the message it came from.
 

@@ -16,7 +16,8 @@ coverage/
 *.swiftsourceinfo
 
 # Local research, manuals and working copies
-docs/
+docs/*
+!docs/README.zh-CN.md
 scratch/
 MANUAL-STATUS.md
 *.bak

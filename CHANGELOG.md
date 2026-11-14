@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.2 (unreleased)
+
+- The npm package page now shows the English README; the Chinese README moved to `docs/README.zh-CN.md` and is linked from the top of the English one.
+- Analysis tests no longer depend on ChatGPT.app being installed, and the browser check tolerates slower CI machines.
+
+---
+
+- npm 包页面改为显示英文 README；中文 README 移到 `docs/README.zh-CN.md`，英文 README 顶部有链接。
+- 分析相关测试不再依赖本机安装 ChatGPT.app，界面浏览器检查适应较慢的 CI 机器。
+
 ## 1.2.1 (2026-11-14)
 
 First public release. Agent Things is a session task progress plugin for ChatGPT, Antigravity and Claude Desktop.

@@ -1,6 +1,6 @@
 # Agent Things
 
-[English](README.md) | 简体中文
+[English](../README.md) | 简体中文
 
 当你在同时处理多个会话时或太久没使用某个会话，Agent Things 可以帮助你快速了解会话的进度和待办事项，从而判断是否需要归档和追踪，你还可以点击查看来源快速跳转、回顾历史信息。
 
@@ -10,16 +10,16 @@ Agent Things 是 macOS 上的 AI 编程会话进度插件，支持 **ChatGPT**�
 
 <table>
   <tr>
-    <td width="50%"><img src="assets/readme/sidebar-panel.png" alt="会话列表中的进度圆环与状态面板"></td>
-    <td width="50%"><img src="assets/readme/manual-adjust.png" alt="手动记录会话状态、进度与备注"></td>
+    <td width="50%"><img src="../assets/readme/sidebar-panel.png" alt="会话列表中的进度圆环与状态面板"></td>
+    <td width="50%"><img src="../assets/readme/manual-adjust.png" alt="手动记录会话状态、进度与备注"></td>
   </tr>
   <tr>
     <td align="center">会话列表的进度圆环与状态面板</td>
     <td align="center">手动调整状态、进度与备注</td>
   </tr>
   <tr>
-    <td width="50%"><img src="assets/readme/claude-inline-card.png" alt="在 Claude 会话中用 /things 查看进度卡片"></td>
-    <td width="50%"><img src="assets/readme/antigravity-panel.png" alt="Antigravity 侧边的 Things 面板"></td>
+    <td width="50%"><img src="../assets/readme/claude-inline-card.png" alt="在 Claude 会话中用 /things 查看进度卡片"></td>
+    <td width="50%"><img src="../assets/readme/antigravity-panel.png" alt="Antigravity 侧边的 Things 面板"></td>
   </tr>
   <tr>
     <td align="center">在会话中输入 <code>/things</code> 查看进度（Claude）</td>
@@ -90,7 +90,7 @@ npx agent-things setup --yes
   - Claude：`~/Library/Application Support/AgentThings/claude/manual-state.json`
 - 插件没有任何遥测或上传服务。
 - 「更新进度」会通过本机已登录的 ChatGPT 内置 Codex CLI、Antigravity 命令行或 Claude Code（Haiku）调用模型，并把会话中的用户与助手文本发送给该模型；工具原始输出、思考过程和图片不会发送。
-- 插件通过客户端的本机调试接口显示界面，只接受本机回环地址。详细说明见 [SECURITY.md](SECURITY.md)。
+- 插件通过客户端的本机调试接口显示界面，只接受本机回环地址。详细说明见 [SECURITY.md](../SECURITY.md)。
 
 ## 升级与卸载
 
@@ -205,7 +205,7 @@ Agent Things 依赖 LLM 更新具体待办事项，免去了繁琐的记录过�
 
 ## 开发
 
-参见 [CONTRIBUTING.md](CONTRIBUTING.md)。常用命令：
+参见 [CONTRIBUTING.md](../CONTRIBUTING.md)。常用命令：
 
 ```sh
 npm ci --ignore-scripts
@@ -214,7 +214,7 @@ npm run verify
 
 ## 许可
 
-[MIT](LICENSE) © 2026 snuffpic
+[MIT](../LICENSE) © 2026 snuffpic
 
 ## 更新计划
 

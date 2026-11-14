@@ -41,7 +41,8 @@ async function main() {
     requestIds.add(requestId);
     return handleMessage(session, payload);
   };
-  const waitFor = async (predicate, timeout = 6000) => {
+  // Hosted CI runners (especially Intel) can take well over 6 s to paint a frame under load.
+  const waitFor = async (predicate, timeout = process.env.CI ? 20000 : 6000) => {
     const end = Date.now() + timeout;
     while (Date.now() < end) {
       if (await predicate()) return;
@@ -407,7 +408,10 @@ async function main() {
     chrome.kill('SIGTERM');
     await new Promise(resolve => { if (chrome.exitCode !== null) resolve(); else chrome.once('exit', resolve); });
     chrome.stderr.destroy();
-    fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    // Chrome helper processes can still be flushing the profile after the main process exits;
+    // a leftover temporary folder must not turn a passed check into a failure.
+    try { fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); }
+    catch (error) { console.warn(`Could not remove temporary browser profile ${temporary}: ${error.message}`); }
   }
 }
 main().catch(error => { console.error(error.stack); process.exitCode = 1; });

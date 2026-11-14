@@ -7,7 +7,8 @@ const { EventEmitter } = require('node:events');
 const { runAnalysis: run } = require('../src/analysis-runner.cjs');
 const path = require('node:path');
 const os = require('node:os');
-const runAnalysis = options => run({ catalogHome: path.join(os.tmpdir(), `missing-codex-catalog-${process.pid}`), ...options });
+// Tests never resolve the installed ChatGPT CLI: CI machines don't have ChatGPT.app.
+const runAnalysis = options => run({ binary: '/nonexistent/codex', catalogHome: path.join(os.tmpdir(), `missing-codex-catalog-${process.pid}`), ...options });
 
 function fake(events = [], code = 0, stderr = '') {
   return (binary, args, options) => {

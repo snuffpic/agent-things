@@ -126,7 +126,7 @@ test('App Server timeout identifies method and elapsed time without exposing req
     child.kill = () => process.nextTick(() => child.emit('close'));
     return child;
   };
-  const server = new AnalysisAppServer({ spawnProcess, timeoutMs: 10 });
+  const server = new AnalysisAppServer({ binary: '/nonexistent/codex', spawnProcess, timeoutMs: 10 });
   await assert.rejects(server.request('thread/turns/list', { text: 'secret' }), error => {
     assert.match(error.message, /thread\/turns\/list.*\d+ 毫秒/);
     assert.doesNotMatch(error.message, /secret/);

@@ -1,5 +1,5 @@
-import { labels, colors, taskLabels, layout, accent } from './foundation.js';
-export { labels, colors, taskLabels };
+import { labels, colors, taskLabels, layout, accent, strings, forLang } from './foundation.js';
+export { labels, colors, taskLabels, forLang };
 export const CONTENT_WIDTH = layout.contentWidth;
 export const BUTTON_WIDTH = 80;
 export const escape = text => String(text).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[character]));
@@ -89,7 +89,7 @@ export function header(title, record, active, reserve = 0) {
   const angle = (value || 0) * Math.PI / 50, x = 16 + 10 * Math.sin(angle), y = 17 - 10 * Math.cos(angle);
   const pie = value === 100 ? `<circle cx="16" cy="17" r="10" fill="${color}"/>` : value > 0 ? `<path d="M16 17 L16 7 A10 10 0 ${value > 50 ? 1 : 0} 1 ${x} ${y} Z" fill="${color}"/>` : '';
   const lines = wrapTitleLines(title, CONTENT_WIDTH - 44 - reserve);
-  return svg(`<style>.number{display:none}.heading:hover .number{display:block}.heading:hover .pie{display:none}@keyframes spin{to{transform:rotate(360deg)}}.loading{transform-origin:16px 17px;animation:spin 1s linear infinite}</style><g class="heading"><title>${escape(title)}</title><circle class="${active ? 'loading' : ''}" cx="16" cy="17" r="14" fill="none" stroke="${color}" stroke-width="2" ${active ? 'stroke-dasharray="53 35"' : ''}/><g class="pie">${active ? '' : pie}</g><text class="number" x="16" y="21" text-anchor="middle" font-size="9" fill="${color}">${value == null ? '—' : value + '%'}</text>${lines.map((line, index) => `<text x="42" y="${25 + index * 31}" font-size="24" font-weight="650" letter-spacing="-.5" fill="currentColor">${escape(line)}</text>`).join('')}</g>`, CONTENT_WIDTH, 64);
+  return svg(`<style>.number{display:none}.heading:hover .number{display:block}.heading:hover .pie{display:none}@keyframes spin{to{transform:rotate(360deg)}}.loading{transform-origin:16px 17px;animation:spin 1s linear infinite}</style><g class="heading"><title>${escape(title)}</title><circle class="${active ? 'loading' : ''}" cx="16" cy="17" r="14" fill="none" stroke="${color}" stroke-width="2" ${active ? 'stroke-dasharray="53 35"' : ''}/><g class="pie">${active ? '' : pie}</g><text class="number" x="16" y="21" text-anchor="middle" font-size="9" fill="${color}">${value == null ? '—' : value + '%'}</text>${lines.map((line, index) => `<text x="42" y="${25 + index * 31}" font-size="24" font-weight="650" letter-spacing="-.5" fill="currentColor">${escape(line)}</text>`).join('')}</g>`, CONTENT_WIDTH, 64, 'xMinYMin meet');
 }
 export function statusBadgeSvg(dotColor, label, maxWidth = 150, dotOpacity = 1, labelOpacity = 1) {
   const width = Math.max(56, Math.round(Number.isFinite(maxWidth) ? maxWidth : 150));
@@ -182,24 +182,42 @@ export function preview(text, maxWidth = NOTE_LINE_WIDTH) {
   return wrapText(text, maxWidth, 3);
 }
 
-export function slider(value, color) {
-  const width = CONTENT_WIDTH, track = width - 14, at = 7 + track * (value || 0) / 100;
+export function slider(value, color, width = CONTENT_WIDTH) {
+  const sliderWidth = Math.max(130, Math.round(Number.isFinite(Number(width)) ? Number(width) : CONTENT_WIDTH));
+  const track = sliderWidth - 14, at = 7 + track * (value || 0) / 100;
   const nodes = layout.progressNodes.map(n => `<circle cx="${7+track*n/100}" cy="12" r="3.5" fill="light-dark(#fff,#191919)" stroke="light-dark(#576374,#a0a6ad)" stroke-width="1"/><text x="${7+track*n/100}" y="38" font-size="10" fill="currentColor" text-anchor="${n === 0 ? 'start' : n === 100 ? 'end' : 'middle'}" opacity=".68">${n}</text>`).join('');
-  return svg(`<rect x="7" y="10" width="${track}" height="4" rx="2" fill="light-dark(#c3ccd6,#ffffff12)"/><rect x="7" y="10" width="${track*(value||0)/100}" height="4" rx="2" fill="${color}"/>${nodes}<circle cx="${at}" cy="12" r="7" fill="light-dark(${accent.normal},#e6edf3)" stroke="light-dark(#fff,#191919)" stroke-width="2"/>`,width,51);
+  return svg(`<rect x="7" y="10" width="${track}" height="4" rx="2" fill="light-dark(#c3ccd6,#ffffff12)"/><rect x="7" y="10" width="${track*(value||0)/100}" height="4" rx="2" fill="${color}"/>${nodes}<circle cx="${at}" cy="12" r="7" fill="light-dark(${accent.normal},#e6edf3)" stroke="light-dark(#fff,#191919)" stroke-width="2"/>`, sliderWidth, 51, 'xMinYMid meet');
 }
-export function primary(label, disabled, hovered = false, pressed = false) {
+export function measureButtonWidth(label, minWidth = BUTTON_WIDTH) {
+  const w = textWidth(String(label || ''), 13);
+  return Math.max(minWidth, Math.round(w + 26));
+}
+export function measureClearWidth(label, minWidth = 64) {
+  const w = textWidth(String(label || ''), 11);
+  return Math.max(minWidth, Math.round(w + 20));
+}
+export function primary(label, disabled, hovered = false, pressed = false, width = measureButtonWidth(label)) {
   const fill = disabled ? accent.normal : pressed ? accent.pressed : hovered ? accent.hover : accent.normal;
-  return svg(`<rect width="${BUTTON_WIDTH}" height="36" rx="9" fill="${fill}" opacity="${disabled?'.5':'1'}"/><text x="${BUTTON_WIDTH/2}" y="23" fill="white" text-anchor="middle" font-size="13" font-weight="550">${escape(label)}</text>`,BUTTON_WIDTH,36);
+  return svg(`<rect width="${width}" height="36" rx="9" fill="${fill}" opacity="${disabled?'.5':'1'}"/><text x="${width/2}" y="23" fill="white" text-anchor="middle" font-size="13" font-weight="550">${escape(label)}</text>`, width, 36, 'xMidYMid meet');
 }
 
 // 「在侧栏打开」图标：右侧 28×28 为图标，悬停时在左侧画出提示。
 export const PANE_ICON_WIDTH = 104;
-export function paneIcon(hovered, pressed) {
-  const tip = hovered ? `<rect x="0" y="3" width="70" height="22" rx="6" fill="light-dark(#22272e,#e6edf3)"/><text x="35" y="18" text-anchor="middle" font-size="11" fill="light-dark(#fff,#191919)">在侧栏打开</text>` : '';
-  const ink = hovered || pressed ? 'light-dark(#22272e,#e6edf3)' : 'light-dark(#576374,#a0a6ad)';
-  const bg = hovered || pressed ? `<rect x="76" y="0" width="28" height="28" rx="6" fill="light-dark(#f0f3f6,#ffffff12)"/>` : '';
-  return svg(`${tip}${bg}<rect x="83.65" y="8.65" width="14.7" height="11.7" rx="3" fill="none" stroke="${ink}" stroke-width="1.3"/><path d="M93.3 8.7V20.3" stroke="${ink}" stroke-width="1.3"/>`, PANE_ICON_WIDTH, 28);
+export function paneIconWidth(tipLabel = strings?.openInSidebar || '在侧栏打开') {
+  const label = String(tipLabel || '在侧栏打开');
+  const tipW = label === '在侧栏打开' ? 70 : Math.max(70, Math.round(textWidth(label, 11) + 22));
+  return tipW + 34;
 }
-export function clearButton(hovered, pressed) {
-  return svg(`<rect width="64" height="28" rx="6" fill="light-dark(#f0f1f2,#ffffff10)" opacity="${pressed ? 1 : hovered ? 1 : 0}"/><text x="32" y="18" text-anchor="middle" font-size="11" fill="${hovered || pressed ? 'light-dark(#bf2f3a,#ef7777)' : 'light-dark(#667383,#828c96)'}">清除进度</text>`, 64, 28);
+export function paneIcon(hovered, pressed, tipLabel = strings?.openInSidebar || '在侧栏打开') {
+  const label = String(tipLabel || '在侧栏打开');
+  const tipW = label === '在侧栏打开' ? 70 : Math.max(70, Math.round(textWidth(label, 11) + 22));
+  const totalW = tipW + 34;
+  const iconX = tipW + 6;
+  const tip = hovered ? `<rect x="0" y="3" width="${tipW}" height="22" rx="6" fill="light-dark(#22272e,#e6edf3)"/><text x="${tipW / 2}" y="18" text-anchor="middle" font-size="11" fill="light-dark(#fff,#191919)">${escape(label)}</text>` : '';
+  const ink = hovered || pressed ? 'light-dark(#22272e,#e6edf3)' : 'light-dark(#576374,#a0a6ad)';
+  const bg = hovered || pressed ? `<rect x="${iconX}" y="0" width="28" height="28" rx="6" fill="light-dark(#f0f3f6,#ffffff12)"/>` : '';
+  return svg(`${tip}${bg}<rect x="${iconX + 7.65}" y="8.65" width="14.7" height="11.7" rx="3" fill="none" stroke="${ink}" stroke-width="1.3"/><path d="M${iconX + 17.3} 8.7V20.3" stroke="${ink}" stroke-width="1.3"/>`, totalW, 28, 'xMidYMid meet');
+}
+export function clearButton(hovered, pressed, label = strings?.btnClear || '清除进度', width = label === '清除进度' ? 64 : measureClearWidth(label)) {
+  return svg(`<rect width="${width}" height="28" rx="6" fill="light-dark(#f0f1f2,#ffffff10)" opacity="${pressed ? 1 : hovered ? 1 : 0}"/><text x="${width / 2}" y="18" text-anchor="middle" font-size="11" fill="${hovered || pressed ? 'light-dark(#bf2f3a,#ef7777)' : 'light-dark(#667383,#828c96)'}">${escape(label)}</text>`, width, 28, 'xMidYMid meet');
 }

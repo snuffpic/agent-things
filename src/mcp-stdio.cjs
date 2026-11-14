@@ -1,11 +1,17 @@
 'use strict';
 const readline = require('node:readline');
 const { errorDetails } = require('./progress-error.cjs');
-const { tools: defaultTools } = require('./progress-tools.cjs');
+const { getTools } = require('./progress-tools.cjs');
+const { readConfiguredLang } = require('./i18n.cjs');
 
-function serveMcp({ name, callTool, tools = defaultTools, extraTools = [], resource, onClose = () => {}, input = process.stdin, output = process.stdout }) {
+function serveMcp({ name, callTool, tools, extraTools = [], resource, onClose = () => {}, input = process.stdin, output = process.stdout }) {
   const controllers = new Map();
-  const catalog = [...tools, ...extraTools];
+  const resolveTools = () => {
+    const lang = readConfiguredLang();
+    const base = typeof tools === 'function' ? tools(lang) : (tools || getTools(lang));
+    const extra = typeof extraTools === 'function' ? extraTools(lang) : extraTools;
+    return { lang, base, extra, catalog: [...base, ...extra] };
+  };
   const send = response => output.write(JSON.stringify({ jsonrpc: '2.0', ...response }) + '\n');
   const fail = (id, code, message) => send({ id, error: { code, message } });
   const rl = readline.createInterface({ input, terminal: false });
@@ -28,7 +34,7 @@ function serveMcp({ name, callTool, tools = defaultTools, extraTools = [], resou
       const versions = ['2025-06-18', '2025-03-26', '2024-11-05'];
       send({ id, result: { protocolVersion: versions.includes(params.protocolVersion) ? params.protocolVersion : versions[0], capabilities: { tools: {}, ...(resource ? { resources: {} } : {}) }, serverInfo: { name, version: require('../package.json').version } } });
     } else if (method === 'ping') send({ id, result: {} });
-    else if (method === 'tools/list') send({ id, result: { tools: catalog } });
+    else if (method === 'tools/list') send({ id, result: { tools: resolveTools().catalog } });
     else if (resource && method === 'resources/list') send({ id, result: { resources: [resource.descriptor] } });
     else if (resource && method === 'resources/templates/list') send({ id, result: { resourceTemplates: [] } });
     else if (resource && method === 'resources/read') {
@@ -37,16 +43,17 @@ function serveMcp({ name, callTool, tools = defaultTools, extraTools = [], resou
       catch (error) { fail(id, -32603, error.message); }
     }
     else if (method === 'tools/call') {
+      const { lang, extra, catalog } = resolveTools();
       if (!catalog.some(tool => tool.name === params.name)) { fail(id, -32601, 'Tool not found'); return; }
       const controller = new AbortController();
       controllers.set(id, controller);
       try {
         const value = await callTool(params.name, params.arguments || {}, params._meta, { signal: controller.signal });
-        const result = extraTools.some(tool => tool.name === params.name) ? value
-          : { content: [{ type: 'text', text: value == null ? '该会话暂无记录。' : JSON.stringify(value) }] };
+        const result = extra.some(tool => tool.name === params.name) ? value
+          : { content: [{ type: 'text', text: value == null ? (lang === 'en' ? 'No progress recorded for this session yet.' : '该会话暂无记录。') : JSON.stringify(value) }] };
         send({ id, result });
       } catch (error) {
-        send({ id, result: { isError: true, structuredContent: { errorInfo: errorDetails(error) }, content: [{ type: 'text', text: error.message }] } });
+        send({ id, result: { isError: true, structuredContent: { errorInfo: errorDetails(error, undefined, lang) }, content: [{ type: 'text', text: error.message }] } });
       } finally { controllers.delete(id); }
     } else fail(id, -32601, 'Method not found');
   });

@@ -4,19 +4,21 @@ const path = require('node:path');
 const { normalizeProjectPath } = require('./project-path.cjs');
 const { withStateFileLock } = require('./state-file-lock.cjs');
 const { mergeAnalysis, summarizeTasks } = require('./analysis-ledger.cjs');
+const { readConfiguredLang } = require('./i18n.cjs');
 
 const { progressError } = require('./progress-error.cjs');
 
 const STATES = new Set(['unstarted', 'unfinished', 'completed', 'pushed']);
 
-function normalizeRecord(input) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) throw progressError('INVALID_ARGUMENT');
-  if (!STATES.has(input.state)) throw progressError('INVALID_ARGUMENT', '请选择有效状态');
+function normalizeRecord(input, { lang = readConfiguredLang() } = {}) {
+  const en = lang === 'en';
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw progressError('INVALID_ARGUMENT', undefined, undefined, lang);
+  if (!STATES.has(input.state)) throw progressError('INVALID_ARGUMENT', en ? 'Please choose a valid status' : '请选择有效状态', undefined, lang);
   let progress = input.progress;
   if (progress !== null && (!Number.isInteger(progress) || progress < 0 || progress > 100)) {
-    throw progressError('INVALID_ARGUMENT', '进度应为 0–100 的整数，或留空');
+    throw progressError('INVALID_ARGUMENT', en ? 'Progress must be an integer between 0 and 100, or empty' : '进度应为 0–100 的整数，或留空', undefined, lang);
   }
-  if (typeof input.note !== 'string' || input.note.length > 4000) throw progressError('INVALID_ARGUMENT', '事项记录最多 4000 字');
+  if (typeof input.note !== 'string' || input.note.length > 4000) throw progressError('INVALID_ARGUMENT', en ? 'Note cannot exceed 4000 characters' : '事项记录最多 4000 字', undefined, lang);
   let state = input.state;
   if (state === 'unstarted') progress = 0;
   else if (state === 'completed' || state === 'pushed') progress = 100;
@@ -25,23 +27,29 @@ function normalizeRecord(input) {
 }
 
 class ManualStatusStore {
-  constructor(file) {
+  constructor(file, { lang } = {}) {
     this.file = file;
+    this._lang = lang || null;
     this.lastMtimeMs = 0;
     this.data = { version: 1, revision: 0, records: {} };
+    const en = this.lang() === 'en';
     if (fs.existsSync(file)) {
       const stat = fs.statSync(file);
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (data.version !== 1 || !Number.isInteger(data.revision) || !data.records || Array.isArray(data.records)) {
-        throw new Error('状态文件格式不受支持，请保留原文件后检查');
+        throw new Error(en ? 'Unsupported status file format; preserve the file and check it' : '状态文件格式不受支持，请保留原文件后检查');
       }
       for (const record of Object.values(data.records)) {
-        if (record.state !== null) normalizeRecord(record);
-        if (!Number.isInteger(record.revision)) throw new Error('状态记录缺少修订号');
+        if (record.state !== null) normalizeRecord(record, { lang: this.lang() });
+        if (!Number.isInteger(record.revision)) throw new Error(en ? 'Status record is missing revision number' : '状态记录缺少修订号');
       }
       this.data = data;
       this.lastMtimeMs = stat.mtimeMs;
     }
+  }
+
+  lang() {
+    return this._lang || readConfiguredLang({ dataDir: this.file ? path.dirname(this.file) : undefined });
   }
 
   reloadIfModified(force = false) {
@@ -52,7 +60,7 @@ class ManualStatusStore {
       throw error;
     }
     if (!force && stat.mtimeMs === this.lastMtimeMs) return false;
-    const loaded = new ManualStatusStore(this.file);
+    const loaded = new ManualStatusStore(this.file, { lang: this._lang });
     const changed = this.data.revision !== loaded.data.revision || stat.mtimeMs !== this.lastMtimeMs;
     this.data = loaded.data;
     this.lastMtimeMs = loaded.lastMtimeMs;
@@ -70,29 +78,29 @@ class ManualStatusStore {
     });
   }
 
-  _normalizeAnalysis(rawAnalysis) {
+  _normalizeAnalysis(rawAnalysis, lang = this.lang()) {
     const analysis = structuredClone(rawAnalysis || null);
     if (analysis?.ledger?.tasks) {
       const { scopeComplete, needsReview, ...ledger } = analysis.ledger;
-      analysis.ledger = { ...ledger, ...summarizeTasks(ledger) };
+      analysis.ledger = { ...ledger, ...summarizeTasks(ledger, { lang }) };
     }
     return analysis;
   }
 
-  _projectTimelineItem(item) {
+  _projectTimelineItem(item, lang = this.lang()) {
     const event = structuredClone(item);
     if (event.source === 'analysis' && event.status === 'completed' && Array.isArray(event.ledger?.tasks)) {
       const { scopeComplete, needsReview, ...ledger } = event.ledger;
-      event.ledger = { ...ledger, ...summarizeTasks(ledger) };
+      event.ledger = { ...ledger, ...summarizeTasks(ledger, { lang }) };
       event.progress = event.ledger.percent;
       event.progressBasis = event.ledger.basis;
     }
     return event;
   }
 
-  _summarizeTimelineItem(item) {
+  _summarizeTimelineItem(item, lang = this.lang()) {
     const progress = item.source === 'analysis' && item.status === 'completed' && Array.isArray(item.ledger?.tasks)
-      ? (typeof item.progress === 'number' ? item.progress : summarizeTasks(item.ledger).percent)
+      ? (typeof item.progress === 'number' ? item.progress : summarizeTasks(item.ledger, { lang }).percent)
       : (item.progress ?? item.record?.progress ?? null);
     return {
       actionSequence: item.actionSequence,
@@ -123,13 +131,14 @@ class ManualStatusStore {
   snapshot() {
     this.reloadIfModified();
     const { version, revision } = this.data;
+    const lang = this.lang();
     const records = structuredClone(this.data.records);
     for (const [key, record] of Object.entries(records)) {
       if (record.source !== 'analysis') continue;
       if (record.progress == null) {
         const event = (this.data.timeline || []).find(item => item.key === key && item.source === 'analysis' && item.actionSequence === record.actionSequence && item.status === 'completed');
         if (event?.ledger?.tasks?.length) {
-          const totals = summarizeTasks(event.ledger);
+          const totals = summarizeTasks(event.ledger, { lang });
           record.progress = totals.percent;
           record.state = totals.completedTasks === totals.totalTasks ? 'completed' : 'unfinished';
         }
@@ -142,20 +151,22 @@ class ManualStatusStore {
 
   analysisState(key) {
     this.reloadIfModified();
-    const analysis = this._normalizeAnalysis(this.data.analysis?.[key]);
-    const timeline = (this.data.timeline || []).filter(item => item.key === key).map(item => this._projectTimelineItem(item));
+    const lang = this.lang();
+    const analysis = this._normalizeAnalysis(this.data.analysis?.[key], lang);
+    const timeline = (this.data.timeline || []).filter(item => item.key === key).map(item => this._projectTimelineItem(item, lang));
     return { revision: this.data.revision, analysis, timeline };
   }
 
   // 只读单会话投影：避免在高频 read/watch 中全量克隆所有会话记录与历史任务台账大对象。
   readSessionProjection(key) {
     this.reloadIfModified();
+    const lang = this.lang();
     const revision = this.data.revision;
     const rawRecord = this.data.records?.[key];
     const record = rawRecord ? structuredClone(rawRecord) : null;
-    const analysis = this._normalizeAnalysis(this.data.analysis?.[key]);
+    const analysis = this._normalizeAnalysis(this.data.analysis?.[key], lang);
     const rawTimeline = (this.data.timeline || []).filter(item => item.key === key);
-    const timelineSummary = rawTimeline.map(item => this._summarizeTimelineItem(item));
+    const timelineSummary = rawTimeline.map(item => this._summarizeTimelineItem(item, lang));
     let latestAnalysisEvent = null;
     for (let i = rawTimeline.length - 1; i >= 0; i--) {
       if (rawTimeline[i].source === 'analysis') {
@@ -172,8 +183,11 @@ class ManualStatusStore {
   write(next) {
     if (!this.writing) {
       const baseRevision = this.data.revision;
+      const lang = this.lang();
       return this.transaction(() => {
-        if (this.data.revision !== baseRevision) throw progressError('REVISION_CONFLICT', '账本已在其他进程更新，请重新读取');
+        if (this.data.revision !== baseRevision) {
+          throw progressError('REVISION_CONFLICT', lang === 'en' ? 'Ledger was updated in another process; please read again' : '账本已在其他进程更新，请重新读取', undefined, lang);
+        }
         return this.write(next);
       });
     }
@@ -189,12 +203,17 @@ class ManualStatusStore {
   }
 
   recoverPending() {
+    const lang = this.lang();
     return this.transaction(() => {
       const next = structuredClone(this.data);
       let changed = false;
       for (const event of next.timeline || []) {
         if (event.source === 'analysis' && event.status === 'pending') {
-          event.status = 'failed'; event.errorCode = 'SERVICE_STOPPING'; event.error = '后台进程中断'; event.finishedAt = Date.now(); changed = true;
+          event.status = 'failed';
+          event.errorCode = 'SERVICE_STOPPING';
+          event.error = lang === 'en' ? 'Background service interrupted' : '后台进程中断';
+          event.finishedAt = Date.now();
+          changed = true;
         }
       }
       if (changed) { next.revision++; this.write(next); }
@@ -202,10 +221,14 @@ class ManualStatusStore {
   }
 
   beginAnalysis(key, boundary) {
+    const lang = this.lang();
+    const en = lang === 'en';
     return this.transaction(() => {
-      if (!this.validKey(key)) throw progressError('INVALID_ARGUMENT', '无效会话标识');
+      if (!this.validKey(key)) throw progressError('INVALID_ARGUMENT', en ? 'Invalid session identifier' : '无效会话标识', undefined, lang);
       const next = structuredClone(this.data);
-      if (next.timeline?.some(item => item.key === key && item.source === 'analysis' && item.status === 'pending')) throw new Error('此会话已有分析进行中');
+      if (next.timeline?.some(item => item.key === key && item.source === 'analysis' && item.status === 'pending')) {
+        throw new Error(en ? 'Analysis is already running for this session' : '此会话已有分析进行中');
+      }
       const sequence = next.actionSequence = (next.actionSequence || 0) + 1;
       next.revision++;
       (next.timeline ||= []).push({ key, actionSequence: sequence, source: 'analysis', status: 'pending', requestedAt: Date.now(), stage: 'starting', stageStartedAt: Date.now(), stageDurations: {}, boundary });
@@ -235,19 +258,23 @@ class ManualStatusStore {
   }
 
   finishAnalysis(key, sequence, result) {
+    const lang = this.lang();
+    const en = lang === 'en';
     return this.transaction(() => {
       const current = this.data.records[key];
       if (current?.clearedAtSequence >= sequence) return this.snapshot();
       const next = structuredClone(this.data);
       const event = next.timeline?.find(item => item.key === key && item.actionSequence === sequence && item.source === 'analysis');
-      if (!event || event.status !== 'pending') throw new Error('分析操作不存在或已结束');
+      if (!event || event.status !== 'pending') throw new Error(en ? 'Analysis job not found or already finished' : '分析操作不存在或已结束');
       event.finishedAt = Date.now();
       if (event.stage && event.stageStartedAt) (event.stageDurations ||= {})[event.stage] = (event.stageDurations[event.stage] || 0) + event.finishedAt - event.stageStartedAt;
       if (result.error) { event.status = 'failed'; event.error = result.error; event.errorCode = result.errorCode || 'ANALYSIS_FAILED'; }
       else {
-        if (typeof result.ledger?.summary !== 'string' || result.ledger.summary.length > 4000 || !Array.isArray(result.ledger.tasks)) throw new Error('分析结果无效');
+        if (typeof result.ledger?.summary !== 'string' || result.ledger.summary.length > 4000 || !Array.isArray(result.ledger.tasks)) {
+          throw new Error(en ? 'Invalid analysis result' : '分析结果无效');
+        }
         const { scopeComplete, needsReview, ...resultLedger } = result.ledger;
-        const totals = summarizeTasks(resultLedger);
+        const totals = summarizeTasks(resultLedger, { lang });
         const ledger = { ...resultLedger, ...totals };
         event.status = 'completed'; event.summary = ledger.summary; event.ledger = ledger; event.boundary = result.boundary; event.sources = result.sources; event.projectGit = result.projectGit;
         event.progress = totals.percent;
@@ -278,7 +305,8 @@ class ManualStatusStore {
 
   resolveKey(convId) {
     this.reloadIfModified();
-    if (typeof convId !== 'string' || !convId.trim()) throw new Error('请指定会话标识');
+    const en = this.lang() === 'en';
+    if (typeof convId !== 'string' || !convId.trim()) throw new Error(en ? 'Please provide a session identifier' : '请指定会话标识');
     if (this.validKey(convId)) return convId;
 
     const raw = String(convId).trim();
@@ -288,18 +316,19 @@ class ManualStatusStore {
       const [host, id] = JSON.parse(key);
       return host === 'local' && id.replace(/^local:/, '') === cleanId;
     });
-    if (matches.length > 1) throw new Error('会话标识有多个匹配，请提供完整标识');
+    if (matches.length > 1) throw new Error(en ? 'Multiple sessions match this identifier; please provide the full key' : '会话标识有多个匹配，请提供完整标识');
     return matches[0] || JSON.stringify(['local', `local:${cleanId}`]);
   }
 
   getProgress(convId) {
     this.reloadIfModified();
+    const lang = this.lang();
     const key = this.resolveKey(convId);
     const rawRecord = this.data.records?.[key];
     const record = rawRecord ? structuredClone(rawRecord) : null;
     if (!record || record.state === null) return null;
 
-    const analysis = this._normalizeAnalysis(this.data.analysis?.[key]);
+    const analysis = this._normalizeAnalysis(this.data.analysis?.[key], lang);
     const ledger = analysis?.ledger;
 
     return {
@@ -317,7 +346,7 @@ class ManualStatusStore {
       completedTasks: ledger?.completedTasks ?? (ledger?.tasks?.filter(t => t.status === 'done').length || 0),
       remainingTasks: ledger?.remainingTasks ?? (ledger?.tasks?.filter(t => t.status !== 'done').length || 0),
       summary: record.note || '',
-      taskProgress: ledger ? summarizeTasks(ledger).percent : null,
+      taskProgress: ledger ? summarizeTasks(ledger, { lang }).percent : null,
       tasksSource: ledger ? 'analysis' : null,
     };
   }
@@ -341,9 +370,13 @@ class ManualStatusStore {
   }
 
   enrichTaskSources(key, expectedRevision, pointers) {
+    const lang = this.lang();
+    const en = lang === 'en';
     return this.transaction(() => {
       const record = this.data.records[key];
-      if (!record || record.revision !== expectedRevision) throw progressError('REVISION_CONFLICT', '任务记录已变化，请重新读取');
+      if (!record || record.revision !== expectedRevision) {
+        throw progressError('REVISION_CONFLICT', en ? 'Task ledger has changed; please read again' : '任务记录已变化，请重新读取', undefined, lang);
+      }
       const next = structuredClone(this.data);
       const analysis = next.analysis?.[key];
       if (!analysis) return false;
@@ -366,12 +399,16 @@ class ManualStatusStore {
   }
 
   applyTaskDelta({ key, expectedRevision, delta, projectGit, taskSources = [] }) {
+    const lang = this.lang();
+    const en = lang === 'en';
     return this.transaction(() => {
-      if (!this.validKey(key)) throw progressError('INVALID_ARGUMENT', '无效会话标识');
+      if (!this.validKey(key)) throw progressError('INVALID_ARGUMENT', en ? 'Invalid session identifier' : '无效会话标识', undefined, lang);
       const previous = this.data.records[key];
-      if ((previous?.revision ?? 0) !== expectedRevision) throw progressError('REVISION_CONFLICT');
+      if ((previous?.revision ?? 0) !== expectedRevision) throw progressError('REVISION_CONFLICT', undefined, undefined, lang);
       const analysis = this.data.analysis?.[key];
-      if (typeof delta?.summary !== 'string' || delta.summary.length > 4000 || !Array.isArray(delta.tasks)) throw progressError('INVALID_ARGUMENT', '任务增量无效');
+      if (typeof delta?.summary !== 'string' || delta.summary.length > 4000 || !Array.isArray(delta.tasks)) {
+        throw progressError('INVALID_ARGUMENT', en ? 'Invalid task delta' : '任务增量无效', undefined, lang);
+      }
       const sequence = (this.data.actionSequence || 0) + 1;
       const ref = `m${sequence}`;
       const sources = { ...(analysis?.sources || {}), [ref]: { actionSequence: sequence, requestedAt: Date.now() } };
@@ -387,7 +424,7 @@ class ManualStatusStore {
         }
         return { ...change, evidenceRefs };
       });
-      const ledger = mergeAnalysis(analysis?.ledger, { ...delta, tasks }, Object.keys(sources));
+      const ledger = mergeAnalysis(analysis?.ledger, { ...delta, tasks }, Object.keys(sources), { lang });
       this.beginAnalysis(key, null);
       return this.finishAnalysis(key, sequence, { ledger, sources, checkpoint: analysis?.checkpoint,
         boundary: null, projectGit: projectGit || analysis?.projectGit });
@@ -395,18 +432,20 @@ class ManualStatusStore {
   }
 
   update({ key, expectedRevision, record, projectPath }) {
+    const lang = this.lang();
+    const en = lang === 'en';
     return this.transaction(() => {
       this.reloadIfModified();
-      if (!this.validKey(key)) throw progressError('INVALID_ARGUMENT', '无效会话标识');
+      if (!this.validKey(key)) throw progressError('INVALID_ARGUMENT', en ? 'Invalid session identifier' : '无效会话标识', undefined, lang);
       const previous = this.data.records[key];
-      if ((previous?.revision ?? 0) !== expectedRevision) throw progressError('REVISION_CONFLICT');
+      if ((previous?.revision ?? 0) !== expectedRevision) throw progressError('REVISION_CONFLICT', undefined, undefined, lang);
       const next = structuredClone(this.data);
       next.revision++;
       const actionSequence = next.actionSequence = (next.actionSequence || 0) + 1;
       // Keep a revisioned empty record so a stale window cannot resurrect a cleared mark.
       next.records[key] = record === null
         ? { state: null, actionSequence, revision: next.revision, updatedAt: Date.now() }
-        : { ...normalizeRecord(record), actionSequence, revision: next.revision, updatedAt: Date.now() };
+        : { ...normalizeRecord(record, { lang }), actionSequence, revision: next.revision, updatedAt: Date.now() };
       if (previous?.clearedAtSequence) next.records[key].clearedAtSequence = previous.clearedAtSequence;
       if (record === null) {
         next.records[key].clearedAtSequence = actionSequence;

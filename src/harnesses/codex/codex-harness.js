@@ -1,5 +1,11 @@
 'use strict';
 (function () {
+  const getUiText = (key, fallback) => {
+    const p = window.__agentThingsPresentation;
+    const lang = window.__agentThingsLang || p?.lang || 'zh';
+    const ui = p?.forLang ? p.forLang(lang) : null;
+    return ui?.strings?.[key] ?? p?.strings?.[key] ?? fallback;
+  };
   const codexHarness = {
     globalName: '__codexSessionStatus',
     createLocalCards: options => createCodexLocalCards(options),
@@ -50,7 +56,7 @@
         if (!threadId) continue;
 
         const titleNode = row.querySelector('[data-thread-title]');
-        const title = row.getAttribute('data-app-action-sidebar-thread-title') || titleNode?.textContent?.trim() || '会话';
+        const title = row.getAttribute('data-app-action-sidebar-thread-title') || titleNode?.textContent?.trim() || getUiText('fallbackThreadTitle', '会话');
         const existing = mounted.get(row);
         if (existing) {
           if (existing.title !== title) { existing.title = title; paint(existing); }
@@ -114,7 +120,8 @@
 
     async locate({ entry, source, analysisMessage }) {
       if (!source?.turnId || !source?.itemId) {
-        analysisMessage.textContent = '此记录没有可定位的消息';
+        analysisMessage.status = 'not_found';
+        analysisMessage.textContent = getUiText('locateNoSource', '此记录没有可定位的消息');
         return;
       }
 
@@ -137,7 +144,11 @@
         if (isCurrent) break;
         await new Promise(resolve => setTimeout(resolve, 80));
       }
-      if (!isCurrent) { analysisMessage.textContent = '未能打开来源会话，请重试'; return; }
+      if (!isCurrent) {
+        analysisMessage.status = 'not_found';
+        analysisMessage.textContent = getUiText('locateOpenFailed', '未能打开来源会话，请重试');
+        return;
+      }
 
       const unitKey = `${source.turnId}:${source.itemId}`;
       const escapedKey = CSS.escape(unitKey);
@@ -153,7 +164,7 @@
                        document.querySelector(`[data-thread-user-message-navigation-item-id^="${escapedTurn}:"]`) ||
                        document.querySelector(`[data-thread-user-message-navigation-item-id="${escapedTurn}"]`);
         if (navBtn) {
-          analysisMessage.textContent = '正在定位消息…';
+          analysisMessage.textContent = getUiText('locatingMessage', '正在定位消息…');
           navBtn.click();
           // 等待官方虚拟列表挂载目标回合
           const deadline = Date.now() + 1500;
@@ -202,9 +213,11 @@
           }
         }, 3000);
 
-        analysisMessage.textContent = '已定位来源';
+        analysisMessage.status = 'located';
+        analysisMessage.textContent = getUiText('locatedMessage', '已定位来源');
       } else {
-        analysisMessage.textContent = '未找到原始消息，可能已被清理';
+        analysisMessage.status = 'not_found';
+        analysisMessage.textContent = getUiText('locateNotFound', '未找到原始消息，可能已被清理');
       }
     }
   };

@@ -76,13 +76,24 @@ async function locateClaudeMessage({ threadId, itemId, timeoutMs = 15000 }) {
   }
   return { located: false, reason: 'history_load_timeout' };
 }
-function navigationResult(result) {
-  const messages = {
+const { readConfiguredLang } = require('../../i18n.cjs');
+
+function navigationResult(result, lang = readConfiguredLang()) {
+  const en = lang === 'en';
+  const messages = en ? {
+    session_not_visible: 'Please expand the corresponding session in the Claude sidebar first',
+    session_changed: 'Session changed; locating stopped',
+    transcript_api_unavailable: 'Message locating interface is unavailable in the current client',
+    message_not_rendered: 'Message loaded, but its display position could not be located yet',
+    history_load_failed: 'Claude failed to load earlier messages; please retry shortly',
+    message_not_in_history: 'This source message was not found in the current session history',
+    history_load_timeout: 'Claude is still loading earlier history; please retry shortly',
+  } : {
     session_not_visible: '请先在 Claude 侧栏展开对应会话', session_changed: '会话已切换，定位已停止',
     transcript_api_unavailable: '当前客户端的消息定位接口暂不可用', message_not_rendered: '消息已加载，但暂未能定位显示位置',
     history_load_failed: 'Claude 加载历史消息失败，请稍后重试', message_not_in_history: '当前会话历史中没有找到这条来源消息',
     history_load_timeout: 'Claude 仍在加载更早的历史，请稍后重试',
   };
-  return { ...result, message: result?.located ? '已定位来源' : messages[result?.reason] || '暂时无法定位来源消息' };
+  return { ...result, message: result?.located ? (en ? 'Located source' : '已定位来源') : messages[result?.reason] || (en ? 'Unable to locate source message right now' : '暂时无法定位来源消息') };
 }
 module.exports = { locateClaudeMessage, navigationResult };

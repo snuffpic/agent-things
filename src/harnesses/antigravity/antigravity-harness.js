@@ -13,6 +13,16 @@
   const THINGS_SIDECAR_ID = 'things/things_board';
   const THINGS_SIDECAR_DEFAULT_PATH = '/';
   const waitMs = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const getUiText = (key, enFallback, zhFallback) => {
+    const p = window.__agentThingsPresentation;
+    const lang = window.__agentThingsConnection?.lang || window.__agentThingsLang || p?.lang || 'zh';
+    if (key) {
+      const ui = p?.forLang ? p.forLang(lang) : null;
+      const val = ui?.strings?.[key] ?? p?.strings?.[key];
+      if (val) return val;
+    }
+    return lang === 'en' ? enFallback : (zhFallback || enFallback);
+  };
 
   function normalizeLocatorText(text) {
     return String(text || '')
@@ -161,7 +171,7 @@
     if (readUrlConvId() === threadId) return findSidebarRowByCascadeId(threadId) || rowFallback || true;
 
     const row = findSidebarRowByCascadeId(threadId) || rowFallback;
-    if (!row) throw new Error('找不到对应的会话项');
+    if (!row) throw new Error(getUiText(null, 'Session item not found', '找不到对应的会话项'));
 
     if (!harness.isRowSelected(row)) {
       const link = row.querySelector?.('a');
@@ -178,7 +188,7 @@
       }
       await waitMs(80);
     }
-    throw new Error('切换到目标会话超时');
+    throw new Error(getUiText(null, 'Timed out switching to target session', '切换到目标会话超时'));
   }
 
   function collectReactBridge() {
@@ -334,7 +344,7 @@
             if (window.__codexSessionStatus?.reply) {
               window.__codexSessionStatus.reply({
                 requestId: msg.requestId,
-                error: `后台服务连接失败：${err.message}`,
+                error: `${getUiText(null, 'Background service connection failed: ', '后台服务连接失败：')}${err.message}`,
                 snapshot: { revision: 0, records: {} },
               });
             }
@@ -360,7 +370,7 @@
       const bridge = collectReactBridge();
       const descriptor = bridge.ext ? resolveThingsSidecarDescriptor(bridge.ext) : null;
       if (bridge.ext && !descriptor) {
-        throw new Error('Things 侧边栏插件未启用，请先在 Plugins Manager 中启用 Things 插件');
+        throw new Error(getUiText(null, 'Things sidebar plugin is not enabled. Enable it in Plugins Manager first.', 'Things 侧边栏插件未启用，请先在 Plugins Manager 中启用 Things 插件'));
       }
 
       if (bridge.onSidecarLinkClick) {
@@ -423,7 +433,7 @@
         return { ok: true, method: 'domFallback', conversationId: activeConvId };
       }
 
-      throw new Error('未能打开 Things 侧边栏插件，请确认已在 Antigravity 中启用该扩展');
+      throw new Error(getUiText(null, 'Unable to open Things sidebar plugin; verify the extension is enabled in Antigravity.', '未能打开 Things 侧边栏插件，请确认已在 Antigravity 中启用该扩展'));
     },
 
     async locate({ entry, source, analysisMessage } = {}) {
@@ -434,7 +444,7 @@
         try {
           await switchConversationIfNeeded(targetThreadId, entry?.row, 5000);
         } catch (err) {
-          const message = err?.message || '找不到对应的会话项';
+          const message = err?.message || getUiText(null, 'Session item not found', '找不到对应的会话项');
           setMsg(message);
           return { ok: false, located: false, conversationId: getCurrentConversationId(), message };
         }
@@ -453,10 +463,11 @@
       );
 
       let targetEl = findSourceMessageElement(getViewport(), source);
+      const jumpedMsg = getUiText('locatedJumpMessage', 'Jumped to source message', '已跳转到来源消息');
       if (targetEl) {
         highlightLocatedElement(targetEl);
-        setMsg('已跳转到来源消息');
-        return { ok: true, located: true, method: 'dom', conversationId: activeConvId, message: '已跳转到来源消息' };
+        setMsg(jumpedMsg);
+        return { ok: true, located: true, method: 'dom', conversationId: activeConvId, message: jumpedMsg };
       }
 
       let navResult = { clickedExactTurn: false, clickedChapter: false };
@@ -468,8 +479,8 @@
           targetEl = findSourceMessageElement(getViewport(), source);
           if (targetEl) {
             highlightLocatedElement(targetEl);
-            setMsg('已跳转到来源消息');
-            return { ok: true, located: true, method: 'navigator', conversationId: activeConvId, message: '已跳转到来源消息' };
+            setMsg(jumpedMsg);
+            return { ok: true, located: true, method: 'navigator', conversationId: activeConvId, message: jumpedMsg };
           }
         }
       }
@@ -483,15 +494,15 @@
 
         const vp = getViewport();
         const curMarker = `${load.getAttribute?.('aria-label') || ''}|${vp?.scrollHeight || 0}`;
-        setMsg('正在展开历史消息…');
+        setMsg(getUiText(null, 'Loading earlier history...', '正在展开历史消息…'));
         load.click();
         await waitMs(240);
 
         targetEl = findSourceMessageElement(getViewport(), source);
         if (targetEl) {
           highlightLocatedElement(targetEl);
-          setMsg('已跳转到来源消息');
-          return { ok: true, located: true, method: 'loadOlder', conversationId: activeConvId, message: '已跳转到来源消息' };
+          setMsg(jumpedMsg);
+          return { ok: true, located: true, method: 'loadOlder', conversationId: activeConvId, message: jumpedMsg };
         }
 
         const vpAfter = getViewport();
@@ -506,17 +517,18 @@
       }
 
       if (navResult.clickedExactTurn) {
-        setMsg('已通过会话导航跳转至该轮次');
-        return { ok: true, located: true, method: 'turnNavigator', conversationId: activeConvId, message: '已通过会话导航跳转至该轮次' };
+        const turnMsg = getUiText(null, 'Jumped to this turn via session navigator', '已通过会话导航跳转至该轮次');
+        setMsg(turnMsg);
+        return { ok: true, located: true, method: 'turnNavigator', conversationId: activeConvId, message: turnMsg };
       }
 
-      const failMsg = '来源消息尚未找到，请确认该消息未被删除或折叠';
+      const failMsg = getUiText(null, 'Source message not found; check if it was deleted or collapsed', '来源消息尚未找到，请确认该消息未被删除或折叠');
       setMsg(failMsg);
       return { ok: false, located: false, conversationId: activeConvId, message: failMsg };
     },
 
     reconcile({ mounted, unmount, attachHost, paint, paintVisibility, openPanel, closePanel, isPanelBusy, isPanelEntry }) {
-      const extractSessionTitle = row => extractSidebarRowTitle(row) || '会话';
+      const extractSessionTitle = row => extractSidebarRowTitle(row) || getUiText('fallbackThreadTitle', 'Session', '会话');
 
       // 1. 清理已断开连接、非侧边栏行、或绑定的 cascadeId 已被 React 复用给其他会话的 slot（解决串台）
       for (const [row, entry] of [...mounted.entries()]) {
@@ -950,7 +962,7 @@
         type: data.type === 'AGENT_THINGS_AUTH_REQUEST' ? 'AGENT_THINGS_AUTH_RESPONSE' : 'AGENT_THINGS_ACTION_RESULT',
         nonce: data.nonce,
         success: false,
-        error: '会话身份不匹配：禁止跨会话操作',
+        error: getUiText(null, 'Session identity mismatch: cross-session action blocked', '会话身份不匹配：禁止跨会话操作'),
       });
       return;
     }
@@ -1037,7 +1049,7 @@
           nonce,
           action,
           success: false,
-          error: err.message || '代理请求失败',
+          error: err.message || getUiText(null, 'Proxy request failed', '代理请求失败'),
         });
       }
       return;
@@ -1059,7 +1071,7 @@
             action: 'locate',
             success: Boolean(result?.located),
             data: result,
-            error: result?.located ? undefined : (result?.message || '未找到来源消息'),
+            error: result?.located ? undefined : (result?.message || getUiText(null, 'Source message not found', '未找到来源消息')),
           });
         }
       } catch (err) {
@@ -1069,7 +1081,7 @@
             nonce,
             action: 'locate',
             success: false,
-            error: err?.message || '定位来源失败',
+            error: err?.message || getUiText(null, 'Failed to locate source', '定位来源失败'),
           });
         }
       }
@@ -1097,7 +1109,7 @@
             nonce,
             action: 'open-pane',
             success: false,
-            error: err?.message || '打开侧栏插件失败',
+            error: err?.message || getUiText(null, 'Failed to open the sidebar plugin', '打开侧栏插件失败'),
           });
         }
       }
@@ -1182,7 +1194,7 @@
               type: data.type === 'AGENT_THINGS_AUTH_REQUEST' ? 'AGENT_THINGS_AUTH_RESPONSE' : 'AGENT_THINGS_ACTION_RESULT',
               nonce: data.nonce,
               success: false,
-              error: '会话身份不匹配：禁止跨会话操作',
+              error: getUiText(null, 'Session identity mismatch: cross-session action blocked', '会话身份不匹配：禁止跨会话操作'),
             });
             tempPort.close?.();
           } catch (_) {}

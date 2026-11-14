@@ -27,9 +27,12 @@ async function readProjectGit(request, threadId, probe = inspectGit) {
     return { ...await probe(result?.thread?.cwd), projectPath: result?.thread?.cwd || null, projectKnown: true, checkedAt: Date.now() };
   } catch { return { status: 'unknown', hasRemote: false, checkedAt: Date.now() }; }
 }
-function requireGitRemote(git) {
+function requireGitRemote(git, lang) {
+  const { readConfiguredLang } = require('./i18n.cjs');
   const { progressError } = require('./progress-error.cjs');
-  if (git?.status === 'unknown') throw progressError('HOST_UNAVAILABLE', '暂时无法检测 Git 信息，请重试');
-  if (!git?.hasRemote) throw progressError('INVALID_ARGUMENT', '此项目尚未配置 Git 远端');
+  const activeLang = lang || readConfiguredLang();
+  const en = activeLang === 'en';
+  if (git?.status === 'unknown') throw progressError('HOST_UNAVAILABLE', en ? 'Unable to inspect Git info right now, please retry' : '暂时无法检测 Git 信息，请重试', undefined, activeLang);
+  if (!git?.hasRemote) throw progressError('INVALID_ARGUMENT', en ? 'Git remote is not configured for this project' : '此项目尚未配置 Git 远端', undefined, activeLang);
 }
 module.exports = { inspectGit, readProjectGit, requireGitRemote };

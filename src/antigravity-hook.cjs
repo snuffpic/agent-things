@@ -6,6 +6,7 @@ const os = require('node:os');
 const { ManualStatusStore } = require('./manual-status-store.cjs');
 const { generateCardArtifact } = require('./antigravity-card.cjs');
 const { resolveAntigravityTitle } = require('./harnesses/antigravity/antigravity-title.cjs');
+const { readConfiguredLang, getUi, formatSessionMarkdownSummary } = require('./i18n.cjs');
 
 function extractUserInput(raw) {
   if (typeof raw !== 'string') return '';
@@ -36,6 +37,8 @@ function processHookInput(rawInput) {
 
   // 读取本地状态
   const statePath = path.join(os.homedir(), '.gemini/antigravity/session-status/manual-state.json');
+  const lang = readConfiguredLang({ dataDir: path.dirname(statePath) });
+  const { t } = getUi(lang);
   let progressData = null;
   if (fs.existsSync(statePath)) {
     try {
@@ -55,15 +58,15 @@ function processHookInput(rawInput) {
 
   const isEmptySession = progressData == null;
   const stateText = isEmptySession
-    ? '尚未记录进展'
+    ? t('unrecordedSummary')
     : (progressData?.state === 'completed' || progressData?.progress === 100
-      ? '全部完成 (100%)'
-      : (progressData?.progress != null ? `${progressData.progress}%` : '未开始'));
+      ? t('mdStateDone')
+      : (progressData?.progress != null ? `${progressData.progress}%` : t('mdStateUnstarted')));
   const total = progressData?.totalTasks || 0;
   const done = progressData?.completedTasks || 0;
-  const tasksText = total > 0 ? `已完成 ${done} / ${total} 项任务` : '暂无任务清单';
-  const noteText = progressData?.note ? `\n- **会话备注**：${progressData.note}` : '';
-  const summaryText = isEmptySession ? '尚未记录进展' : (progressData?.summary || '');
+  const tasksText = total > 0 ? t('totalsPattern', { done, total }) : t('mdTasksEmpty');
+  const noteText = progressData?.note ? `\n- **${t('mdNotesLabel')}**：${progressData.note}`.replace('：', lang === 'en' ? ': ' : '：') : '';
+  const summaryText = isEmptySession ? t('unrecordedSummary') : (progressData?.summary || '');
 
   // 生成卡片工件（空会话时不分析、不建任务、不写账本）
   const resolvedBrainDir = path.basename(artifactDir) === conversationId
@@ -71,7 +74,7 @@ function processHookInput(rawInput) {
     : path.join(os.homedir(), '.gemini/antigravity/brain');
   const sessionTitle = resolveAntigravityTitle(conversationId, {
     brainDir: resolvedBrainDir,
-    fallback: '当前会话',
+    fallback: t('defaultSessionTitle'),
   });
 
   const cardResult = generateCardArtifact({
@@ -90,15 +93,17 @@ function processHookInput(rawInput) {
     revision: progressData?.revision || 0,
     connection,
     title: sessionTitle,
+    lang,
   });
 
-  const userMarkdown = `${cardResult.embedTag}\n\n**当前会话任务进度：${stateText}**\n- **任务总览**：${tasksText}${noteText}\n- **快捷交互**：可在卡片中点击“手动调整”滑动调整进度或修改备注，或点击“更新进度”开始自动分析。`;
+  const mdColon = lang === 'en' ? ': ' : '：';
+  const userMarkdown = `${cardResult.embedTag}\n\n**${t('mdProgressHeading')}${mdColon}${stateText}**\n- **${t('mdTasksOverview')}**${mdColon}${tasksText}${noteText}\n- **${t('mdQuickActionsLabel')}**${mdColon}${t('mdQuickActionsText')}`;
 
   return {
     injectSteps: [
       {
         systemMessage: {
-          systemMessage: '已呈现当前会话任务进度卡片',
+          systemMessage: t('hookPresentedMessage'),
           metadata: {
             user_markdown: userMarkdown,
           },

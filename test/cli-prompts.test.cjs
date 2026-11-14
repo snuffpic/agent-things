@@ -11,7 +11,7 @@ function prompts(tty = true) {
   stdout.on('data', chunk => { output += chunk; });
   const mod = { exports: {} };
   const file = path.join(__dirname, '../src/cli/prompt-tui.cjs');
-  const req = id => id === '../../package.json' ? { version: 'test' } : id === './environment-probe.cjs' ? { formatProbeText: item => item?.installed ? 'Installed' : 'Missing' } : require(id);
+  const req = id => id === '../../package.json' ? { version: 'test' } : id === './environment-probe.cjs' ? { formatProbeText: item => item?.installed ? 'Installed' : 'Missing' } : id === '../i18n.cjs' ? require('../src/i18n.cjs') : require(id);
   vm.runInThisContext('(function(require,module,exports,process){' + fs.readFileSync(file, 'utf8') + '\n})')(req, mod, mod.exports, { stdin, stdout });
   return { ...mod.exports, stdin, output: () => output, key: name => stdin.emit('keypress', name === 'space' ? ' ' : '', { name }) };
 }
@@ -36,4 +36,21 @@ test('escape returns, EOF cancels and a non-terminal produces no ANSI menu', asy
   ui.key('escape'); assert.equal(await pending, null); assert.equal(ui.stdin.isRaw, false);
   pending = ui.askConfirm('confirm'); ui.stdin.emit('end'); await assert.rejects(pending, error => error.code === 'CLI_CANCELLED');
   const piped = prompts(false); await assert.rejects(piped.selectApps(env), /终端/); assert.equal(piped.output(), '');
+});
+
+test('prompt cancellation and missing-terminal errors follow the selected language', async () => {
+  for (const [lang, cancelled, ended, noTty] of [
+    ['en', 'Cancelled.', 'Input ended; cancelled.', /^Interactive mode requires a terminal/],
+    ['zh', '操作已取消。', '输入已结束，操作取消。', /^交互模式需要终端/],
+  ]) {
+    let ui = prompts();
+    let pending = ui.askConfirm('confirm', true, lang);
+    ui.stdin.emit('keypress', '\u0003', { name: 'c', ctrl: true });
+    await assert.rejects(pending, error => error.code === 'CLI_CANCELLED' && error.message === cancelled);
+    ui = prompts();
+    pending = ui.selectMenu('menu', [{ label: 'a', value: 'a' }], lang);
+    ui.stdin.emit('end');
+    await assert.rejects(pending, error => error.code === 'CLI_CANCELLED' && error.message === ended);
+    await assert.rejects(prompts(false).selectApps(env, lang), error => noTty.test(error.message));
+  }
 });

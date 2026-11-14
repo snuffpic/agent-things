@@ -327,7 +327,7 @@
     .actions {
       display: flex;
       align-items: center;
-      gap: 17px;
+      gap: 14px;
       margin: 12px 0 14px;
     }
     .primary {
@@ -339,6 +339,8 @@
       font-weight: 550;
       min-height: 36px;
       font-size: 13px;
+      white-space: nowrap;
+      flex-shrink: 0;
       transition: background 0.15s ease;
     }
     .primary:hover {
@@ -351,6 +353,7 @@
       padding: 0;
       color: var(--at-secondary);
       font-size: 12px;
+      white-space: nowrap;
       cursor: pointer;
       transition: color 0.12s ease;
     }
@@ -853,7 +856,7 @@
 
         <div class="totals-row">
           <span class="totals" id="overviewTotals">暂无任务统计</span>
-          <span class="source-label">自动分析</span>
+          <span class="source-label" id="overviewSourceLabel">自动分析</span>
         </div>
 
         <div class="summary-block" id="summaryBlock" tabindex="0">
@@ -863,10 +866,10 @@
 
         <div class="actions">
           <button class="primary" id="btnAnalyze" onclick="onAnalyzeClick()">更新进度</button>
-          <button class="text-button" onclick="switchToEdit()">手动调整</button>
-          <button class="clear" aria-label="清除进度" onclick="onClearClick()">
-            <span class="clear-tooltip" role="tooltip">立即清除进度与任务记录</span>
-            清除进度
+          <button class="text-button" id="btnAdjust" onclick="switchToEdit()">手动调整</button>
+          <button class="clear" id="btnClear" aria-label="清除进度" onclick="onClearClick()">
+            <span class="clear-tooltip" id="clearTooltip" role="tooltip">立即清除进度与任务记录</span>
+            <span id="clearBtnLabel">清除进度</span>
           </button>
         </div>
 
@@ -883,11 +886,11 @@
         <!-- Bottom Rows (1:1 identical to sidebar) -->
         <div class="overview-bottom">
           <button class="quiet-row history-open" onclick="switchToHistory()">
-            <span>已完成任务</span>
+            <span id="completedRowLabel">已完成任务</span>
             <span class="row-detail" id="historyCount">0 条 ›</span>
           </button>
           <button class="quiet-row note-open" onclick="switchToEditNote()">
-            <span>备注</span>
+            <span id="notesRowLabel">备注</span>
             <span class="row-detail" id="noteOpenLabel">添加</span>
           </button>
         </div>
@@ -896,8 +899,8 @@
       <!-- History View -->
       <div id="historyView" class="view history-view" hidden>
         <div class="view-heading">
-          <h3>已完成任务</h3>
-          <button class="back" onclick="switchToOverview()">‹ 返回</button>
+          <h3 id="historyHeading">已完成任务</h3>
+          <button class="back" id="historyBackBtn" onclick="switchToOverview()">‹ 返回</button>
         </div>
         <div class="history-list" id="historyList">
           <div class="empty">暂无已完成任务</div>
@@ -907,38 +910,38 @@
       <!-- Edit View -->
       <div id="editView" class="view edit-view" hidden>
         <div class="view-heading">
-          <h3>手动记录会话状态</h3>
-          <button class="back" onclick="switchToOverview()">‹ 返回</button>
+          <h3 id="editHeading">手动记录会话状态</h3>
+          <button class="back" id="editBackBtn" onclick="switchToOverview()">‹ 返回</button>
         </div>
         <div class="choices-list">
           
             <button class="choice" id="choice-unstarted"  aria-pressed="false" style="--mark:#9098a2" onclick="selectState('unstarted')">
               <span class="dot"></span>
-              <span>尚未开始</span>
+              <span class="choice-label">尚未开始</span>
             </button>
           
             <button class="choice" id="choice-unfinished"  aria-pressed="true" style="--mark:#c89b38" onclick="selectState('unfinished')">
               <span class="dot"></span>
-              <span>有遗留事项</span>
+              <span class="choice-label">有遗留事项</span>
             </button>
           
             <button class="choice" id="choice-completed"  aria-pressed="false" style="--mark:#548eea" onclick="selectState('completed')">
               <span class="dot"></span>
-              <span>全部完成</span>
+              <span class="choice-label">全部完成</span>
             </button>
           
             <button class="choice" id="choice-pushed" hidden aria-pressed="false" style="--mark:#a17be3" onclick="selectState('pushed')">
               <span class="dot"></span>
-              <span>全部完成并已推送</span>
+              <span class="choice-label">全部完成并已推送</span>
             </button>
           
         </div>
 
         <div class="progress-section">
           <div class="progress-head">
-            <label class="label" for="inputProgressNumber">进度</label>
+            <label class="label" id="progressFieldLabel" for="inputProgressNumber">进度</label>
             <div class="number-wrap">
-              <input type="number" id="inputProgressNumber" class="progress-number" min="0" max="100" step="1" value="" placeholder="—" aria-label="手动进度" oninput="onNumberInput(this.value)" onkeydown="onProgressKeyDown(event)">
+              <input type="number" id="inputProgressNumber" class="progress-number" min="0" max="100" step="1" value="" placeholder="—" aria-label="进度" oninput="onNumberInput(this.value)" onkeydown="onProgressKeyDown(event)">
               <span>%</span>
             </div>
           </div>
@@ -972,11 +975,11 @@
           </div>
 
           <div class="unknown-row">
-            <button type="button" class="unknown" onclick="onClearProgressClick()">清空进度</button>
+            <button type="button" class="unknown" id="btnClearProgress" onclick="onClearProgressClick()">清空进度</button>
           </div>
         </div>
 
-        <label class="note-label" for="txtNote">备注</label>
+        <label class="note-label" id="txtNoteLabel" for="txtNote">备注</label>
         <textarea id="txtNote" class="note-input" maxlength="4000" placeholder="记下下一步要做的事…" aria-label="事项备注" oninput="markFormDirty()"></textarea>
 
         <div id="conflictBox" class="conflict-box" style="display:none; margin: 10px 0; padding: 8px 12px; background: rgba(230, 80, 80, 0.12); border: 1px solid rgba(230, 80, 80, 0.35); border-radius: 6px; font-size: 12px; line-height: 1.5; color: var(--at-ink);">
@@ -987,7 +990,7 @@
         </div>
 
         <div class="edit-actions">
-          <button class="text-button" onclick="switchToOverview()">取消</button>
+          <button class="text-button" id="btnCancelEdit" onclick="switchToOverview()">取消</button>
           <button class="primary" id="btnSaveRecord" onclick="onSaveRecord()">保存记录</button>
         </div>
       </div>
@@ -997,12 +1000,260 @@
   </div>
 
   <script>
-    const colors = {"unstarted":"#9098a2","unfinished":"#c89b38","completed":"#548eea","pushed":"#a17be3"};
-    const labels = {"unstarted":"尚未开始","unfinished":"有遗留事项","completed":"全部完成","pushed":"全部完成并已推送"};
-    const taskLabels = {"todo":"待开始","in_progress":"进行中","blocked":"受阻","needs_verification":"待验收","done":"已完成"};
-    function escapeHtml(str) {
-      if (str === null || str === undefined) return '';
-      return String(str)
+    const injectedI18n = window.__agentThingsI18n || {};
+    function normalizeLang(val) {
+      return val === 'en' ? 'en' : 'zh';
+    }
+    let activeLang = normalizeLang(window.__agentThingsLang || injectedI18n.lang || (navigator.language && navigator.language.toLowerCase().startsWith('en') ? 'en' : 'zh'));
+    const fallbackLocales = {
+      zh: {
+        docTitleSuffix: '任务进展',
+        defaultDocTitle: 'Agent Things 会话任务进度',
+        defaultSessionTitle: '当前会话',
+        labels: {"unstarted":"尚未开始","unfinished":"有遗留事项","completed":"全部完成","pushed":"全部完成并已推送"},
+        taskLabels: {"todo":"待开始","in_progress":"进行中","blocked":"受阻","needs_verification":"待验收","done":"已完成"},
+        unrecordedSummary: '尚未记录进展',
+        noTasksYet: '暂无任务统计',
+        totalsPattern: '已完成 {done} / {total} 项任务',
+        sourceAuto: '自动分析',
+        btnUpdate: '更新进度',
+        btnUpdating: '正在分析…',
+        btnAdjust: '手动调整',
+        btnClear: '清除进度',
+        clearTooltip: '立即清除进度与任务记录',
+        clearConfirm: '确定要清除本会话的任务进度和记录吗？',
+        clearingFeedback: '正在清除…',
+        clearedFeedback: '✓ 已清空进度',
+        clearFailedPrefix: '清除失败: ',
+        expandAll: '查看全部',
+        collapse: '收起',
+        remainingHeadingPattern: '剩余任务 {count}',
+        showAllCountPattern: '查看全部 {count} 条 ›',
+        collapseArrow: '收起 ›',
+        emptyNoTasks: '点击更新进度，整理这次会话的任务',
+        emptyNoRemaining: '暂无未完成任务',
+        completedHeading: '已完成任务',
+        countArrowPattern: '{count} 条 ›',
+        notesLabel: '备注',
+        addLabel: '添加',
+        editLabel: '编辑',
+        untitledTask: '未命名事项',
+        completedTaskFallback: '已完成事项',
+        viewSource: '查看来源',
+        backLabel: '‹ 返回',
+        emptyCompleted: '暂无已完成任务',
+        editHeading: '手动记录会话状态',
+        progressLabel: '进度',
+        clearValueBtn: '清空进度',
+        notePlaceholder: '记下下一步要做的事…',
+        noteAriaLabel: '事项备注',
+        sliderAriaLabel: '拖动调整进度',
+        cancelBtn: '取消',
+        saveBtn: '保存记录',
+        savingFeedback: '正在保存…',
+        savedFeedback: '✓ 保存成功',
+        saveFailedPrefix: '保存失败: ',
+        conflictBanner: '保存冲突：内容已被其他入口修改。当前草稿已保留。',
+        conflictDetectedFeedback: '保存失败：检测到版本冲突',
+        resolveConflictBtn: '读取最新版本并保留草稿',
+        conflictRebasedFeedback: '基准版本已对齐最新状态，再次点击保存即可提交当前草稿。',
+        startingAnalysisFeedback: '正在开始分析…',
+        analysisNotDonePrefix: '分析未完成: ',
+        analysisAbnormal: '执行异常',
+        updateFailedPrefix: '更新失败: ',
+        locatingShort: '定位中...',
+        locatedJumpMessage: '已跳转并定位到会话来源',
+        locateNotFound: '未找到对应会话消息',
+        locateSent: '已发送定位请求',
+        locateHostUnavailable: '未能连接宿主定位接口',
+        locateFailedPrefix: '定位失败：',
+        unknownActionError: '未知错误',
+        cardOpFailed: '操作失败',
+        cardAuthUnavailable: '获取连接凭据失败',
+      },
+      en: {
+        docTitleSuffix: 'Progress',
+        defaultDocTitle: 'Agent Things Progress',
+        defaultSessionTitle: 'Current session',
+        labels: {"unstarted":"Not started","unfinished":"Remaining items","completed":"Completed","pushed":"Completed & pushed"},
+        taskLabels: {"todo":"To do","in_progress":"In progress","blocked":"Blocked","needs_verification":"Needs verification","done":"Done"},
+        unrecordedSummary: 'No progress recorded',
+        noTasksYet: 'No task stats yet',
+        totalsPattern: '{done} of {total} tasks done',
+        sourceAuto: 'Auto-analyzed',
+        btnUpdate: 'Update progress',
+        btnUpdating: 'Analyzing...',
+        btnAdjust: 'Adjust',
+        btnClear: 'Clear',
+        clearTooltip: 'Clear progress and task records now',
+        clearConfirm: 'Clear progress and task records for this session?',
+        clearingFeedback: 'Clearing...',
+        clearedFeedback: '✓ Cleared',
+        clearFailedPrefix: 'Clear failed: ',
+        expandAll: 'Show all',
+        collapse: 'Collapse',
+        remainingHeadingPattern: 'Remaining tasks ({count})',
+        showAllCountPattern: 'Show all {count} ›',
+        collapseArrow: 'Collapse ›',
+        emptyNoTasks: 'Click Update progress to organize tasks for this session',
+        emptyNoRemaining: 'No remaining tasks',
+        completedHeading: 'Completed tasks',
+        countArrowPattern: '{count} ›',
+        notesLabel: 'Notes',
+        addLabel: 'Add',
+        editLabel: 'Edit',
+        untitledTask: 'Untitled task',
+        completedTaskFallback: 'Completed task',
+        viewSource: 'View source',
+        backLabel: '‹ Back',
+        emptyCompleted: 'No completed tasks',
+        editHeading: 'Set session status',
+        progressLabel: 'Progress',
+        clearValueBtn: 'Clear value',
+        notePlaceholder: 'Add next steps or notes...',
+        noteAriaLabel: 'Session notes',
+        sliderAriaLabel: 'Drag to adjust progress',
+        cancelBtn: 'Cancel',
+        saveBtn: 'Save',
+        savingFeedback: 'Saving...',
+        savedFeedback: '✓ Saved',
+        saveFailedPrefix: 'Save failed: ',
+        conflictBanner: 'Save conflict: updated elsewhere. Your draft has been kept.',
+        conflictDetectedFeedback: 'Save failed: revision conflict detected',
+        resolveConflictBtn: 'Load latest & keep draft',
+        conflictRebasedFeedback: 'Synced to latest version. Click Save again to submit your draft.',
+        startingAnalysisFeedback: 'Starting analysis...',
+        analysisNotDonePrefix: 'Analysis incomplete: ',
+        analysisAbnormal: 'execution error',
+        updateFailedPrefix: 'Update failed: ',
+        locatingShort: 'Locating...',
+        locatedJumpMessage: 'Jumped to source message',
+        locateNotFound: 'Source message not found',
+        locateSent: 'Locate request sent',
+        locateHostUnavailable: 'Unable to reach host locate API',
+        locateFailedPrefix: 'Locate failed: ',
+        unknownActionError: 'Unknown error',
+        cardOpFailed: 'Card action failed',
+        cardAuthUnavailable: 'Card authorization unavailable',
+      }
+    };
+    const colors = injectedI18n.colors || {"unstarted":"#9098a2","unfinished":"#c89b38","completed":"#548eea","pushed":"#a17be3"};
+    function getLocale(targetLang) {
+      const code = normalizeLang(targetLang || activeLang);
+      const fromInjected = injectedI18n.locales && injectedI18n.locales[code];
+      if (fromInjected) return fromInjected;
+      if (code === normalizeLang(injectedI18n.lang) && injectedI18n.strings) return injectedI18n.strings;
+      return fallbackLocales[code];
+    }
+    let locale = getLocale(activeLang);
+    let labels = locale.labels || fallbackLocales[activeLang].labels;
+    let taskLabels = locale.taskLabels || fallbackLocales[activeLang].taskLabels;
+    function str(key, vars) {
+      const tmpl = locale[key] !== undefined ? locale[key] : (fallbackLocales[activeLang][key] !== undefined ? fallbackLocales[activeLang][key] : key);
+      if (!vars) return tmpl;
+      return String(tmpl).replace(/\{(\w+)\}/g, function(_, k) { return vars[k] !== undefined ? String(vars[k]) : ''; });
+    }
+    let lastRenderedData = null;
+
+    function applyStaticLanguage() {
+      document.documentElement.lang = activeLang === 'en' ? 'en' : 'zh-CN';
+      const srcEl = document.getElementById('overviewSourceLabel');
+      if (srcEl) srcEl.textContent = str('sourceAuto');
+      const adjustBtn = document.getElementById('btnAdjust');
+      if (adjustBtn) adjustBtn.textContent = str('btnAdjust');
+      const clearBtn = document.getElementById('btnClear');
+      if (clearBtn) clearBtn.setAttribute('aria-label', str('btnClear'));
+      const clearTip = document.getElementById('clearTooltip');
+      if (clearTip) clearTip.textContent = str('clearTooltip');
+      const clearLbl = document.getElementById('clearBtnLabel');
+      if (clearLbl) clearLbl.textContent = str('btnClear');
+      const completedRowLbl = document.getElementById('completedRowLabel');
+      if (completedRowLbl) completedRowLbl.textContent = str('completedHeading');
+      const notesRowLbl = document.getElementById('notesRowLabel');
+      if (notesRowLbl) notesRowLbl.textContent = str('notesLabel');
+      const histHeading = document.getElementById('historyHeading');
+      if (histHeading) histHeading.textContent = str('completedHeading');
+      const histBack = document.getElementById('historyBackBtn');
+      if (histBack) histBack.textContent = str('backLabel');
+      const editHead = document.getElementById('editHeading');
+      if (editHead) editHead.textContent = str('editHeading');
+      const editBack = document.getElementById('editBackBtn');
+      if (editBack) editBack.textContent = str('backLabel');
+      for (const stateKey of ['unstarted', 'unfinished', 'completed', 'pushed']) {
+        const lbl = document.querySelector('#choice-' + stateKey + ' .choice-label');
+        if (lbl && labels[stateKey]) lbl.textContent = labels[stateKey];
+      }
+      const progLbl = document.getElementById('progressFieldLabel');
+      if (progLbl) progLbl.textContent = str('progressLabel');
+      const numIn = document.getElementById('inputProgressNumber');
+      if (numIn) numIn.setAttribute('aria-label', str('progressLabel'));
+      const sliderIn = document.getElementById('inputSlider');
+      if (sliderIn) sliderIn.setAttribute('aria-label', str('sliderAriaLabel'));
+      const clrProgBtn = document.getElementById('btnClearProgress');
+      if (clrProgBtn) clrProgBtn.textContent = str('clearValueBtn');
+      const txtNoteLbl = document.getElementById('txtNoteLabel');
+      if (txtNoteLbl) txtNoteLbl.textContent = str('notesLabel');
+      const txtNoteEl = document.getElementById('txtNote');
+      if (txtNoteEl) {
+        txtNoteEl.placeholder = str('notePlaceholder');
+        txtNoteEl.setAttribute('aria-label', str('noteAriaLabel'));
+      }
+      const conflictEl = document.getElementById('conflictMsg');
+      if (conflictEl) conflictEl.textContent = str('conflictBanner');
+      const resolveBtn = document.getElementById('btnResolveConflict');
+      if (resolveBtn) resolveBtn.textContent = str('resolveConflictBtn');
+      const cancelBtn = document.getElementById('btnCancelEdit');
+      if (cancelBtn) cancelBtn.textContent = str('cancelBtn');
+      const saveBtn = document.getElementById('btnSaveRecord');
+      if (saveBtn) saveBtn.textContent = str('saveBtn');
+      const btnAnalyzeEl = document.getElementById('btnAnalyze');
+      if (btnAnalyzeEl) btnAnalyzeEl.textContent = btnAnalyzeEl.disabled ? str('btnUpdating') : str('btnUpdate');
+      const summaryBlock = document.getElementById('summaryBlock');
+      const summaryExpandBtn = document.getElementById('summaryExpand');
+      if (summaryBlock && summaryExpandBtn) {
+        summaryExpandBtn.textContent = summaryBlock.classList.contains('expanded') ? str('collapse') : str('expandAll');
+      }
+      if (!lastRenderedData) {
+        applyCardTitle(currentSessionTitle || str('defaultSessionTitle'), false);
+        const statusLbl = document.getElementById('overviewStatusLabel');
+        if (statusLbl) statusLbl.textContent = labels.unstarted;
+        const totalsEl = document.getElementById('overviewTotals');
+        if (totalsEl) totalsEl.textContent = str('noTasksYet');
+        const sumEl = document.getElementById('overviewSummary');
+        if (sumEl) sumEl.textContent = str('unrecordedSummary');
+        const remHead = document.getElementById('remainingTasksHeading');
+        if (remHead) remHead.textContent = str('remainingHeadingPattern', { count: 0 });
+        const uncompEl = document.getElementById('uncompletedTasksList');
+        if (uncompEl && uncompEl.querySelector('.empty')) {
+          uncompEl.innerHTML = '<div class="empty">' + escapeHtml(str('emptyNoTasks')) + '</div>';
+        }
+        const histCount = document.getElementById('historyCount');
+        if (histCount) histCount.textContent = str('countArrowPattern', { count: 0 });
+        const noteLbl = document.getElementById('noteOpenLabel');
+        if (noteLbl) noteLbl.textContent = str('addLabel');
+        const histList = document.getElementById('historyList');
+        if (histList && histList.querySelector('.empty')) {
+          histList.innerHTML = '<div class="empty">' + escapeHtml(str('emptyCompleted')) + '</div>';
+        }
+      }
+    }
+
+    function setActiveLang(nextLang) {
+      if (nextLang !== 'en' && nextLang !== 'zh') return;
+      const changed = nextLang !== activeLang;
+      activeLang = nextLang;
+      locale = getLocale(activeLang);
+      labels = locale.labels || fallbackLocales[activeLang].labels;
+      taskLabels = locale.taskLabels || fallbackLocales[activeLang].taskLabels;
+      applyStaticLanguage();
+      if (changed && lastRenderedData) {
+        applyFullProgressToUI(lastRenderedData);
+      }
+    }
+
+    function escapeHtml(strVal) {
+      if (strVal === null || strVal === undefined) return '';
+      return String(strVal)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -1011,12 +1262,18 @@
     }
     let conversationId = (window.sidecar?.conversationId || new URLSearchParams(window.location.search).get("conversationId") || "").trim();
     window.conversationId = conversationId;
-    const connection = {"origin":"http://127.0.0.1:29888","conversationId":conversationId,"title":"当前会话","loadToken":null};
+    const connection = {"origin":"http://127.0.0.1:29888","conversationId":conversationId,"title":str('defaultSessionTitle'),"loadToken":null};
     let currentSessionTitle = '';
 
     function isGenericTitle(val) {
       const text = String(val || '').trim();
-      return !text || text === '当前会话' || text === 'Agent Things 会话任务进度';
+      return !text ||
+        text === '当前会话' ||
+        text === 'Agent Things 会话任务进度' ||
+        text === 'Current session' ||
+        text === 'Agent Things Progress' ||
+        text === str('defaultSessionTitle') ||
+        text === str('defaultDocTitle');
     }
 
     function applyCardTitle(nextTitle, remember = true) {
@@ -1026,13 +1283,13 @@
       }
       const display = !isGenericTitle(clean)
         ? clean
-        : (!isGenericTitle(currentSessionTitle) ? currentSessionTitle : '当前会话');
+        : (!isGenericTitle(currentSessionTitle) ? currentSessionTitle : str('defaultSessionTitle'));
       const titleEl = document.getElementById('cardTitle');
       if (titleEl) {
         titleEl.textContent = display;
         titleEl.title = display;
       }
-      document.title = display + ' · 任务进展';
+      document.title = display + ' · ' + str('docTitleSuffix');
     }
     let currentRevision = 0;
     let savedRevision = 0;
@@ -1054,10 +1311,10 @@
       const box = document.getElementById('conflictBox');
       const text = document.getElementById('conflictMsg');
       if (box && text) {
-        text.textContent = msg || '保存冲突：内容已被其他入口修改。当前草稿已保留。';
+        text.textContent = msg || str('conflictBanner');
         box.style.display = 'block';
       }
-      showFeedback('保存失败：检测到版本冲突', true);
+      showFeedback(str('conflictDetectedFeedback'), true);
     }
 
     function hideConflictNotice() {
@@ -1068,7 +1325,7 @@
     function resolveConflictKeepDraft() {
       draftBaseRevision = savedRevision;
       hideConflictNotice();
-      showFeedback('基准版本已对齐最新状态，再次点击保存即可提交当前草稿。');
+      showFeedback(str('conflictRebasedFeedback'));
     }
 
     function switchToEdit() {
@@ -1197,7 +1454,7 @@
       if (btn) {
         btn.setAttribute('data-expanded', String(!isExpanded));
         const total = hiddenRows.length + 3;
-        btn.textContent = isExpanded ? ('查看全部 ' + total + ' 条 ›') : '收起 ›';
+        btn.textContent = isExpanded ? str('showAllCountPattern', { count: total }) : str('collapseArrow');
       }
     }
 
@@ -1206,7 +1463,7 @@
       const btn = document.getElementById('summaryExpand');
       if (!block || !btn) return;
       const isExpanded = block.classList.toggle('expanded');
-      btn.textContent = isExpanded ? '收起' : '查看全部';
+      btn.textContent = isExpanded ? str('collapse') : str('expandAll');
     }
 
     function checkSummaryOverflow() {
@@ -1219,13 +1476,13 @@
 
     async function onSourceClick(button) {
       if (!button || button.disabled) return;
-      const originalLabel = button.textContent || '查看来源';
+      const originalLabel = button.textContent || str('viewSource');
       try {
         const sourceJson = button.getAttribute('data-source');
         if (!sourceJson) return;
         const source = JSON.parse(sourceJson);
         button.disabled = true;
-        button.textContent = '定位中...';
+        button.textContent = str('locatingShort');
 
         // 1. 优先通过 Sidecar 后台 /api/locate 直达宿主 CDP，等待真实跳转与定位结果
         let locateHandled = false;
@@ -1239,10 +1496,10 @@
           if (resp.ok && data) {
             locateHandled = true;
             if (data.located) {
-              showFeedback(data.message || '已跳转并定位到会话来源');
+              showFeedback(data.message || str('locatedJumpMessage'));
               return;
             }
-            showFeedback(data.message || '未找到对应会话消息', true);
+            showFeedback(data.message || str('locateNotFound'), true);
             return;
           }
         } catch (_) {}
@@ -1271,17 +1528,17 @@
             } catch (_) {}
           }
           if (posted) {
-            showFeedback('已发送定位请求');
+            showFeedback(str('locateSent'));
             return;
           }
         }
 
-        showFeedback('未能连接宿主定位接口', true);
+        showFeedback(str('locateHostUnavailable'), true);
       } catch (err) {
-        showFeedback('定位失败：' + (err.message || '未知错误'), true);
+        showFeedback(str('locateFailedPrefix') + (err.message || str('unknownActionError')), true);
       } finally {
         button.disabled = false;
-        button.textContent = originalLabel;
+        button.textContent = str('viewSource') || originalLabel;
       }
     }
 
@@ -1315,7 +1572,7 @@
         })
       });
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || '操作失败');
+      if (!res.ok || data.error) throw new Error(data.error || str('cardOpFailed'));
       return data;
     }
 
@@ -1341,7 +1598,7 @@
           if (data.success) {
             req.resolve(data.data || {});
           } else {
-            req.reject(new Error(data.error || '操作失败'));
+            req.reject(new Error(data.error || str('cardOpFailed')));
           }
         }
         return;
@@ -1351,10 +1608,11 @@
     async function requestHostAuth() {
       try {
         const res = await fetch('/api/ticket?conversationId=' + encodeURIComponent(conversationId));
-        if (!res.ok) throw new Error('获取连接凭据失败');
+        if (!res.ok) throw new Error(str('cardAuthUnavailable'));
         return await res.json();
       } catch (err) {
-        throw new Error('申请订阅票据失败: ' + err.message);
+        const prefix = activeLang === 'en' ? 'Failed to request event ticket: ' : '申请订阅票据失败: ';
+        throw new Error(prefix + err.message);
       }
     }
 
@@ -1369,7 +1627,7 @@
       const noteVal = document.getElementById('txtNote')?.value ?? '';
       try {
         if (btn) btn.disabled = true;
-        showFeedback('正在保存…');
+        showFeedback(str('savingFeedback'));
         const reply = await sendProxyAction('update', {
           expectedRevision: draftBaseRevision,
           record: {
@@ -1387,14 +1645,14 @@
         }
         isFormDirty = false;
         hideConflictNotice();
-        showFeedback('✓ 保存成功');
+        showFeedback(str('savedFeedback'));
         setTimeout(switchToOverview, 600);
       } catch (err) {
-        const isConflict = err.message && (err.message.includes('其他窗口更新') || err.message.includes('版本已被') || err.message.includes('409') || err.message.includes('conflict') || err.message.includes('revision mismatch'));
+        const isConflict = err.message && (err.message.includes('其他窗口更新') || err.message.includes('版本已被') || err.message.includes('updated by another') || err.message.includes('409') || err.message.includes('conflict') || err.message.includes('revision mismatch'));
         if (isConflict) {
-          showConflictNotice('保存冲突：内容已被其他入口修改。当前草稿已保留。');
+          showConflictNotice(str('conflictBanner'));
         } else {
-          showFeedback('保存失败: ' + err.message, true);
+          showFeedback(str('saveFailedPrefix') + err.message, true);
         }
       } finally {
         if (btn) btn.disabled = false;
@@ -1402,9 +1660,9 @@
     }
 
     async function onClearClick() {
-      if (!confirm('确定要清除本会话的任务进度和记录吗？')) return;
+      if (!confirm(str('clearConfirm'))) return;
       try {
-        showFeedback('正在清除…');
+        showFeedback(str('clearingFeedback'));
         const reply = await sendProxyAction('clear', {
           expectedRevision: draftBaseRevision,
         });
@@ -1416,15 +1674,17 @@
         }
         isFormDirty = false;
         hideConflictNotice();
-        showFeedback('✓ 已清空进度');
+        showFeedback(str('clearedFeedback'));
       } catch (err) {
-        showFeedback('清除失败: ' + err.message, true);
+        showFeedback(str('clearFailedPrefix') + err.message, true);
       }
     }
 
     function handleRemoteSessionUpdate(payload) {
       if (!payload) return;
+      if (payload.lang) setActiveLang(payload.lang);
       const s = payload.session || payload;
+      if (s && s.lang) setActiveLang(s.lang);
       const effectiveProgress = typeof s.progress === 'number' ? s.progress : typeof s.progress?.progress === 'number' ? s.progress.progress : (typeof s === 'number' ? s : null);
       const effectiveState = s.state || s.progress?.state || (effectiveProgress === 100 ? 'completed' : (effectiveProgress > 0 ? 'unfinished' : 'unstarted'));
       const effectiveTasks = Array.isArray(s.tasks) ? s.tasks : (Array.isArray(s.progress?.tasks) ? s.progress.tasks : (s.analysis?.ledger?.tasks || []));
@@ -1450,12 +1710,12 @@
       if (btnAnalyze) {
         if (analyzing) {
           btnAnalyze.disabled = true;
-          btnAnalyze.textContent = '正在分析…';
+          btnAnalyze.textContent = str('btnUpdating');
         } else {
           btnAnalyze.disabled = false;
-          btnAnalyze.textContent = '更新进度';
+          btnAnalyze.textContent = str('btnUpdate');
           if (analysisStatus?.status === 'failed') {
-            showFeedback('分析未完成: ' + (analysisStatus.error || '执行异常'), true);
+            showFeedback(str('analysisNotDonePrefix') + (analysisStatus.error || str('analysisAbnormal')), true);
           }
         }
       }
@@ -1477,6 +1737,7 @@
 
     function applyFullProgressToUI(data) {
       if (!data) return;
+      lastRenderedData = data;
       currentRevision = data.revision ?? currentRevision;
       const nextState = data.state || (data.progress === 100 ? 'completed' : data.progress > 0 ? 'unfinished' : 'unstarted');
       const nextProgress = data.progress ?? null;
@@ -1489,7 +1750,7 @@
         const noteInput = document.getElementById('txtNote');
         if (noteInput) noteInput.value = data.note || '';
         const noteOpenLabel = document.getElementById('noteOpenLabel');
-        if (noteOpenLabel) noteOpenLabel.textContent = data.note ? '编辑' : '添加';
+        if (noteOpenLabel) noteOpenLabel.textContent = data.note ? str('editLabel') : str('addLabel');
       }
 
       applyCardTitle(data.title);
@@ -1537,13 +1798,13 @@
       const doneCount = data.completedTasks ?? data.tasks?.filter(function(t) { return t.status === 'done'; }).length ?? 0;
       const totalsEl = document.getElementById('overviewTotals');
       if (totalsEl) {
-        totalsEl.textContent = totalCount > 0 ? ('已完成 ' + doneCount + ' / ' + totalCount + ' 项任务') : '暂无任务统计';
+        totalsEl.textContent = totalCount > 0 ? str('totalsPattern', { done: doneCount, total: totalCount }) : str('noTasksYet');
       }
 
       const summaryText = data.summary || data.note || '';
       const summaryEl = document.getElementById('overviewSummary');
-      if (summaryEl && summaryText) {
-        summaryEl.textContent = summaryText;
+      if (summaryEl) {
+        summaryEl.textContent = summaryText || str('unrecordedSummary');
       }
       checkSummaryOverflow();
 
@@ -1579,25 +1840,25 @@
         const completed = data.tasks.filter(function(t) { return t.status === 'done'; });
 
         const remainingHeading = document.getElementById('remainingTasksHeading');
-        if (remainingHeading) remainingHeading.textContent = '剩余任务 ' + remaining.length;
+        if (remainingHeading) remainingHeading.textContent = str('remainingHeadingPattern', { count: remaining.length });
 
         const toggleBtn = document.getElementById('btnToggleAllRemaining');
         if (toggleBtn) {
           toggleBtn.hidden = remaining.length <= 3;
-          toggleBtn.textContent = '查看全部 ' + remaining.length + ' 条 ›';
+          toggleBtn.textContent = str('showAllCountPattern', { count: remaining.length });
           toggleBtn.setAttribute('data-expanded', 'false');
         }
 
         const historyCount = document.getElementById('historyCount');
-        if (historyCount) historyCount.textContent = completed.length + ' 条 ›';
+        if (historyCount) historyCount.textContent = str('countArrowPattern', { count: completed.length });
 
         const uncompletedList = document.getElementById('uncompletedTasksList');
         if (uncompletedList) {
           let html = '';
           if (data.tasks.length === 0) {
-            html = '<div class="empty">点击更新进度，整理这次会话的任务</div>';
+            html = '<div class="empty">' + escapeHtml(str('emptyNoTasks')) + '</div>';
           } else if (remaining.length === 0) {
-            html = '<div class="empty">暂无未完成任务</div>';
+            html = '<div class="empty">' + escapeHtml(str('emptyNoRemaining')) + '</div>';
           }
           html += remaining.map(function(task, idx) {
             const hasSource = task.source && task.source.locator;
@@ -1605,10 +1866,10 @@
             return '<div class="task-row ' + (idx >= 3 ? 'remaining-hidden' : '') + '" data-status="' + escapeHtml(task.status) + '" ' + (hasSource ? 'tabindex="0" ' : '') + (idx >= 3 ? 'hidden' : '') + '>' +
               '<span class="task-dot"></span>' +
               '<div class="task-content">' +
-                '<div class="task-title">' + escapeHtml(task.title || task.summary || '未命名事项') + '</div>' +
+                '<div class="task-title">' + escapeHtml(task.title || task.summary || str('untitledTask')) + '</div>' +
                 '<div class="task-meta">' + escapeHtml(badge) + '</div>' +
               '</div>' +
-              (hasSource ? '<div class="task-source"><button type="button" data-source="' + escapeHtml(JSON.stringify(task.source)) + '" onclick="onSourceClick(this)">查看来源</button></div>' : '') +
+              (hasSource ? '<div class="task-source"><button type="button" data-source="' + escapeHtml(JSON.stringify(task.source)) + '" onclick="onSourceClick(this)">' + escapeHtml(str('viewSource')) + '</button></div>' : '') +
             '</div>';
           }).join('');
           uncompletedList.innerHTML = html;
@@ -1618,17 +1879,17 @@
         if (historyList) {
           let html = '';
           if (completed.length === 0) {
-            html = '<div class="empty">暂无已完成任务</div>';
+            html = '<div class="empty">' + escapeHtml(str('emptyCompleted')) + '</div>';
           }
           html += completed.map(function(task, idx) {
             const hasSource = task.source && task.source.locator;
             return '<div class="task-row" data-status="done"' + (hasSource ? ' tabindex="0"' : '') + '>' +
               '<span class="task-dot"></span>' +
               '<div class="task-content">' +
-                '<div class="task-title">' + escapeHtml(task.title || task.summary || '已完成事项') + '</div>' +
-                '<div class="task-meta">已完成</div>' +
+                '<div class="task-title">' + escapeHtml(task.title || task.summary || str('completedTaskFallback')) + '</div>' +
+                '<div class="task-meta">' + escapeHtml(taskLabels.done || str('completedShort')) + '</div>' +
               '</div>' +
-              (hasSource ? '<div class="task-source"><button type="button" data-source="' + escapeHtml(JSON.stringify(task.source)) + '" onclick="onSourceClick(this)">查看来源</button></div>' : '') +
+              (hasSource ? '<div class="task-source"><button type="button" data-source="' + escapeHtml(JSON.stringify(task.source)) + '" onclick="onSourceClick(this)">' + escapeHtml(str('viewSource')) + '</button></div>' : '') +
             '</div>';
           }).join('');
           historyList.innerHTML = html;
@@ -1653,15 +1914,15 @@
       try {
         if (btn) {
           btn.disabled = true;
-          btn.textContent = '正在分析…';
+          btn.textContent = str('btnUpdating');
         }
-        showFeedback('正在开始分析…');
+        showFeedback(str('startingAnalysisFeedback'));
         await sendProxyAction('analyze', {});
       } catch (err) {
-        showFeedback('更新失败: ' + err.message, true);
+        showFeedback(str('updateFailedPrefix') + err.message, true);
         if (btn) {
           btn.disabled = false;
-          btn.textContent = '更新进度';
+          btn.textContent = str('btnUpdate');
         }
       }
     }
@@ -1791,8 +2052,8 @@
         progress: null,
         tasks: [],
         note: '',
-        summary: '尚未记录进展',
-        title: currentSessionTitle || '当前会话',
+        summary: str('unrecordedSummary'),
+        title: currentSessionTitle || str('defaultSessionTitle'),
         revision: 0,
         updatedAt: null,
       });
@@ -1838,9 +2099,10 @@
         const res = await fetch('/api/session?conversationId=' + encodeURIComponent(targetId));
         if (res.ok) {
           const data = await res.json();
+          if (data?.lang) setActiveLang(data.lang);
           if (data && data.session) {
             const mergedTitle = !isGenericTitle(data.session.title) ? data.session.title : data.title;
-            handleRemoteSessionUpdate({ ...data.session, title: mergedTitle });
+            handleRemoteSessionUpdate({ ...data.session, title: mergedTitle, lang: data.lang || data.session.lang });
           } else {
             resetToEmptySession(data?.title);
           }
@@ -1853,6 +2115,7 @@
     }
 
     function initCard() {
+      applyStaticLanguage();
       syncThemeWithHost();
       checkSummaryOverflow();
       setupScrollListener();

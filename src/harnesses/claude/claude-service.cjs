@@ -17,17 +17,19 @@ const { ClaudeLocalSource } = require('./claude-local-source.cjs');
 
 const { sessionView, PROTOCOL_VERSION } = require('../../session-view.cjs');
 const { errorDetails } = require('../../progress-error.cjs');
+const { readConfiguredLang, getUi } = require('../../i18n.cjs');
 
 const DEFAULT_PORT = 29889;
 const DEFAULT_STATE_FILE = path.join(os.homedir(), 'Library/Application Support/AgentThings/claude/manual-state.json');
 
 class ClaudeStatusStore extends ManualStatusStore {
   resolveKey(id) {
+    const en = this.lang() === 'en';
     if (this.validKey(id)) {
-      if (JSON.parse(id)[0] !== 'local') throw new Error('当前只支持本地 Claude Code 会话');
+      if (JSON.parse(id)[0] !== 'local') throw new Error(en ? 'Only local Claude Code sessions are supported right now' : '当前只支持本地 Claude Code 会话');
       return id;
     }
-    if (typeof id !== 'string' || !id.trim() || id.length > 256) throw new Error('请提供 Claude Desktop 会话标识');
+    if (typeof id !== 'string' || !id.trim() || id.length > 256) throw new Error(en ? 'Please provide a Claude Desktop session identifier' : '请提供 Claude Desktop 会话标识');
     return JSON.stringify(['local', id.trim()]);
   }
 }
@@ -45,6 +47,7 @@ class ClaudeService {
     // 同会话多入口同步：每个会话记录最后一次变化时的账本修订号，按会话唤醒长等待（不同会话互不唤醒）。
     this.keyChanges = new Map(); this.keySignatures = new Map(); this.watchers = new Map(); this.loggedReads = new Map();
     this.watchStartRevision = 0;
+    this.lastLang = this.currentLang();
     // 所有写入都经最外层 transaction（write 自身也会进入 transaction）：在其结束后比对各会话的变化。
     const transaction = this.store.transaction.bind(this.store);
     this.store.transaction = operation => {
@@ -62,23 +65,31 @@ class ClaudeService {
     this.makeServer = () => host ? new ClaudeTranscriptServer(this.host) : this.localSource.server(new ClaudeTranscriptServer(this.host));
     this.analysis = new AnalysisService({ store: this.store, logFile: path.join(path.dirname(stateFile), 'analysis.jsonl'), makeServer: this.makeServer, run });
   }
+  currentLang() {
+    if (typeof this.store?.lang === 'function') return this.store.lang();
+    return readConfiguredLang({ dataDir: path.dirname(this.stateFile) });
+  }
   requestHost(method, threadId, options) {
     const id = crypto.randomUUID();
+    const en = this.currentLang() === 'en';
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.jobs.delete(id); reject(new Error('Claude 界面连接不可用，请检查插件挂载状态')); }, 20000);
+      const timer = setTimeout(() => { this.jobs.delete(id); reject(new Error(en ? 'Claude UI connection unavailable; check plugin status' : 'Claude 界面连接不可用，请检查插件挂载状态')); }, 20000);
       this.jobs.set(id, { id, method, threadId, options, resolve, reject, timer });
     });
   }
   async projectGit(key) {
-    if (!this.store.validKey(key)) throw new Error('无效会话标识');
+    const en = this.currentLang() === 'en';
+    if (!this.store.validKey(key)) throw new Error(en ? 'Invalid session identifier' : '无效会话标识');
     const session = await this.host('session', JSON.parse(key)[1]);
     if (!session?.cwd) return { status: 'checked', hasRepository: false, hasRemote: false, projectKnown: true, projectPath: null };
     return { ...await inspectGit(session.cwd), projectKnown: true, projectPath: session.cwd };
   }
   async tools(name, args) {
+    const lang = this.currentLang();
+    const en = lang === 'en';
     if (args?.conversation_id && !this.store.validKey(args.conversation_id)) {
       const identity = await this.host('identity', args.conversation_id);
-      if (!identity?.id) throw new Error('无法匹配 Claude Desktop 会话身份，请使用宿主的会话标识');
+      if (!identity?.id) throw new Error(en ? 'Unable to match Claude Desktop session identity; use the host session ID' : '无法匹配 Claude Desktop 会话身份，请使用宿主的会话标识');
       args = { ...args, conversation_id: JSON.stringify(['local', identity.id]) };
     }
     return callProgressTool(this.store, name, args, { projectGit: key => this.projectGit(key), resolveProjects: async keys => {
@@ -89,28 +100,34 @@ class ClaudeService {
       const server = this.makeServer();
       try { return await resolveTaskSources(server.request.bind(server), key, tasks); }
       finally { await server.close(); }
-    } });
+    }, lang });
   }
   async locateSource(session, itemId) {
-    if (!session || typeof itemId !== 'string' || !/^[\w-]{1,256}$/.test(itemId) || !await this.localSource.message(session, itemId)) throw new Error('未找到来源消息');
-    return navigationResult(await this.requestHost('locate', session.sessionId, { itemId }));
+    const lang = this.currentLang();
+    const en = lang === 'en';
+    if (!session || typeof itemId !== 'string' || !/^[\w-]{1,256}$/.test(itemId) || !await this.localSource.message(session, itemId)) {
+      throw new Error(en ? 'Source message not found' : '未找到来源消息');
+    }
+    return navigationResult(await this.requestHost('locate', session.sessionId, { itemId }), lang);
   }
   async rpc(message) {
-    if (!message || typeof message.requestId !== 'string') throw new Error('无效请求');
+    const lang = this.currentLang();
+    const en = lang === 'en';
+    if (!message || typeof message.requestId !== 'string') throw new Error(en ? 'Invalid request' : '无效请求');
     let errorInfo = null, error = null, projectGit = null, analysisState = null, updateInfo = null, pane = null;
     try {
       if (message.type === 'list') { /* Return the current snapshot. */ }
       else if (message.type === 'panel-event') this.log(`panel.${message.action}`, { key: message.key });
       else if (message.type === 'open-pane') {
-        if (!this.store.validKey(message.key) || JSON.parse(message.key)[0] !== 'local') throw new Error('无效 Claude 会话标识');
+        if (!this.store.validKey(message.key) || JSON.parse(message.key)[0] !== 'local') throw new Error(en ? 'Invalid Claude session identifier' : '无效 Claude 会话标识');
         pane = { delivered: await this.deliverPane(message.key, 4000) };
       }
       else if (message.type === 'app-update-info') updateInfo = await updates.getUpdateInfo({ force: message.force === true });
       else if (message.type === 'app-update-start') { await updates.startUpdate(); updateInfo = await updates.getUpdateInfo(); }
       else {
-        if (!this.store.validKey(message.key) || JSON.parse(message.key)[0] !== 'local') throw new Error('无效 Claude 会话标识');
+        if (!this.store.validKey(message.key) || JSON.parse(message.key)[0] !== 'local') throw new Error(en ? 'Invalid Claude session identifier' : '无效 Claude 会话标识');
         if (message.type === 'update') {
-          if (message.record?.state === 'pushed') requireGitRemote(await this.projectGit(message.key));
+          if (message.record?.state === 'pushed') requireGitRemote(await this.projectGit(message.key), lang);
           this.store.update(message);
         } else if (message.type === 'project-git') projectGit = await this.projectGit(message.key);
         else if (message.type === 'locate-source') {
@@ -123,18 +140,21 @@ class ClaudeService {
           const job = this.analysis.start(message.key, { requestId: message.requestId });
           job.promise.catch(failure => this.log('analysis.error', { error: failure.message }));
           analysisState = this.store.analysisState(message.key);
-        } else throw new Error('未知操作');
+        } else throw new Error(en ? 'Unknown action' : '未知操作');
       }
-    } catch (failure) { errorInfo = errorDetails(failure); error = failure.message; }
+    } catch (failure) { errorInfo = errorDetails(failure, undefined, lang); error = failure.message; }
     return { protocolVersion: PROTOCOL_VERSION, requestId: message.requestId, error, errorInfo,
-      ...(this.store.validKey(message.key) && JSON.parse(message.key)[0] === 'local' ? { session: sessionView(this.store, message.key, { projectGit, capabilities: { locate: true } }) } : {}), snapshot: this.syncSnapshot(), projectGit, analysisState, updateInfo, ...(pane ? { pane } : {}) };
+      ...(this.store.validKey(message.key) && JSON.parse(message.key)[0] === 'local' ? { session: sessionView(this.store, message.key, { projectGit, capabilities: { locate: true }, lang }) } : {}), snapshot: this.syncSnapshot(), projectGit, analysisState, updateInfo, ...(pane ? { pane } : {}) };
   }
   async inline(message) {
+    const lang = this.currentLang();
+    const en = lang === 'en';
+    const { t } = getUi(lang);
     const session = this.localSource.resolve(message.sessionId, message.cwd);
-    if (!session) throw new Error('未找到当前 Claude Code 会话的本地身份');
+    if (!session) throw new Error(en ? 'Local identity for the current Claude Code session was not found' : '未找到当前 Claude Code 会话的本地身份');
     const key = JSON.stringify(['local', session.sessionId]);
-    if (message.action === 'pane-poll') return { paneRequested: this.takePaneRequest(key) };
-    if (message.action === 'pane-wait') return { paneRequested: await this.waitPaneRequest(key, message.waitMs) };
+    if (message.action === 'pane-poll') return { paneRequested: this.takePaneRequest(key), lang };
+    if (message.action === 'pane-wait') return { paneRequested: await this.waitPaneRequest(key, message.waitMs), lang };
     if (message.action === 'watch') {
       const started = Date.now(), result = await this.watch(key, message.since, message.waitMs);
       if (result.changed || result.paneRequested) this.log('watch.wake', { revision: this.store.data.revision, elapsedMs: Date.now() - started, ok: result.changed });
@@ -143,9 +163,9 @@ class ClaudeService {
     let source = null;
     if (message.action === 'source' || message.action === 'locate') {
       const task = this.store.getProgress(key)?.tasks.find(task => task.id === message.taskId);
-      if (!task?.source) throw new Error('此任务没有来源记录');
+      if (!task?.source) throw new Error(en ? 'No source record for this task' : '此任务没有来源记录');
       source = { ...task.source, title: task.title };
-      if (message.action === 'locate') return { navigation: await this.locateSource(session, source.itemId) };
+      if (message.action === 'locate') return { navigation: await this.locateSource(session, source.itemId), lang };
       const original = await this.localSource.message(session, source.itemId);
       source.text = original?.text || source.locator || '';
       source.occurredAt = original?.occurredAt || null;
@@ -159,12 +179,12 @@ class ClaudeService {
     } else if (message.action === 'update-info' || message.action === 'upgrade') {
       const reply = await this.rpc({ type: message.action === 'upgrade' ? 'app-update-start' : 'app-update-info', requestId: message.requestId });
       if (reply.error) throw Object.assign(new Error(reply.error), reply.errorInfo || {});
-      return { updateInfo: reply.updateInfo };
-    } else if (message.action !== 'read') throw new Error('未知卡片操作');
+      return { updateInfo: reply.updateInfo, lang };
+    } else if (message.action !== 'read') throw new Error(en ? 'Unknown card action' : '未知卡片操作');
     const projection = this.store.readSessionProjection(key);
     // 只记每个会话读到新修订号的那一次：旧版插件每 2 秒轮询，逐次记录会刷满日志并冲掉验收记录。
     if (message.action === 'read' && this.loggedReads.get(key) !== projection.revision) { this.loggedReads.set(key, projection.revision); this.log('sync.inline_read', { revision: projection.revision }); }
-    return { session: sessionView(this.store, key, { capabilities: { locate: true }, projection }), key, title: session.title || '会话进度', record: projection.record,
+    return { session: sessionView(this.store, key, { capabilities: { locate: true }, projection, lang }), key, title: session.title || t('fallbackShortTitle'), record: projection.record, lang,
       revision: projection.revision, paneRequested: this.takePaneRequest(key), analysis: projection.analysis ? { ledger: { ...projection.analysis.ledger, tasks: projection.activeTasks } } : null, timeline: projection.timelineSummary, source,
       ...(message.action === 'read' && message.includeGit ? { projectGit: await this.projectGit(key) } : {}) };
   }
@@ -199,7 +219,7 @@ class ClaudeService {
   }
   // 快照附带单会话数据版本：弹窗据此补读任务列表（任务来源等记录之外的变化也算）。未变过的会话取启动时修订号。
   syncSnapshot() {
-    return { ...this.store.snapshot(), keyVersionBase: this.watchStartRevision, keyVersions: Object.fromEntries(this.keyChanges) };
+    return { ...this.store.snapshot(), lang: this.currentLang(), keyVersionBase: this.watchStartRevision, keyVersions: Object.fromEntries(this.keyChanges) };
   }
   // 某会话自 since 之后是否变过：启动前的变化以启动时修订号计，令重连的客户端补读一次。
   changedSince(key, since) {
@@ -249,11 +269,21 @@ class ClaudeService {
     this.detectChanges();
     this.watchStarted = true; this.watchStartRevision = this.store.data.revision;
     // 兜底：其他进程直接写账本文件时也能发现（仅 stat，未变化时不读文件）。
-    this.changeTimer = setInterval(() => { try { if (this.store.reloadIfModified()) this.detectChanges(); } catch { /* Next tick retries. */ } }, 300);
+    this.changeTimer = setInterval(() => {
+      try {
+        if (this.store.reloadIfModified()) this.detectChanges();
+        const nextLang = this.currentLang();
+        if (nextLang !== this.lastLang) {
+          this.lastLang = nextLang;
+          for (const key of [...this.watchers.keys()]) this.wakeWatchers(key, { changed: true });
+        }
+      } catch { /* Next tick retries. */ }
+    }, 300);
     this.changeTimer.unref?.();
   }
   async start() {
     this.http = await startProgressHttp({ port: this.port, stateFile: this.stateFile, handle: async (method, route, body) => {
+      const en = this.currentLang() === 'en';
       if (method === 'GET' && route === '/snapshot') return { snapshot: this.syncSnapshot() };
       if (method === 'GET' && route === '/host-jobs') return [...this.jobs.values()].map(({ id, method, threadId, options }) => ({ id, method, threadId, options }));
       if (method === 'POST' && route === '/host-reply') {
@@ -264,14 +294,15 @@ class ClaudeService {
       if (method === 'POST' && route === '/rpc') return this.rpc(body);
       if (method === 'POST' && route === '/inline') return this.inline(body);
       if (method === 'POST' && route === '/tools') return { result: await this.tools(body.name, body.args) };
-      throw new Error('未知服务路径');
+      throw new Error(en ? 'Unknown service route' : '未知服务路径');
     } });
     this.store.recoverPending();
     this.startWatching();
     return this.http.credentials.port;
   }
   async stop() {
-    for (const job of this.jobs.values()) { clearTimeout(job.timer); job.reject(new Error('Claude 后台服务已停止')); }
+    const stopMsg = this.currentLang() === 'en' ? 'Claude background service stopped' : 'Claude 后台服务已停止';
+    for (const job of this.jobs.values()) { clearTimeout(job.timer); job.reject(new Error(stopMsg)); }
     for (const waiters of [...this.paneWaiters.values()]) for (const wake of [...waiters]) wake(false);
     for (const entry of this.paneRequests.values()) entry.settle(false);
     clearInterval(this.changeTimer);

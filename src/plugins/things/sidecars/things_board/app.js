@@ -5,12 +5,50 @@
 (function () {
   'use strict';
 
-  const STATE_LABELS = {
-    unstarted: '尚未开始',
-    unfinished: '进行中 / 遗留',
-    completed: '全部完成',
-    pushed: '已推送',
+  const i18nData = window.__agentThingsI18n || {};
+  let activeLang = (window.__agentThingsLang || i18nData.lang || (navigator.language && navigator.language.toLowerCase().startsWith('en') ? 'en' : 'zh')) === 'en' ? 'en' : 'zh';
+  const fallbackStrings = {
+    zh: {
+      labels: { unstarted: '尚未开始', unfinished: '有遗留事项', completed: '全部完成', pushed: '全部完成并已推送' },
+      noSessionBadge: '无会话',
+      offlineBadge: '离线',
+      totalsPattern: '已完成 {done} / {total} 项任务',
+      savingBtn: '保存中…',
+      saveBtn: '保存记录',
+      conflictBanner: '保存冲突：内容已被其他入口修改。当前草稿已保留。',
+      conflictShortToast: '保存冲突，已保留当前草稿',
+      savedFeedback: '✓ 保存成功',
+      saveFailedPrefix: '保存失败: ',
+      clearConfirm: '确定要清除本会话的任务进度和记录吗？',
+      clearedFeedback: '✓ 已清空进度',
+      clearFailedPrefix: '清除失败: ',
+    },
+    en: {
+      labels: { unstarted: 'Not started', unfinished: 'Remaining items', completed: 'Completed', pushed: 'Completed & pushed' },
+      noSessionBadge: 'No session',
+      offlineBadge: 'Offline',
+      totalsPattern: '{done} of {total} tasks done',
+      savingBtn: 'Saving...',
+      saveBtn: 'Save',
+      conflictBanner: 'Save conflict: updated elsewhere. Your draft has been kept.',
+      conflictShortToast: 'Save conflict, draft kept',
+      savedFeedback: '✓ Saved',
+      saveFailedPrefix: 'Save failed: ',
+      clearConfirm: 'Clear progress and task records for this session?',
+      clearedFeedback: '✓ Cleared',
+      clearFailedPrefix: 'Clear failed: ',
+    },
   };
+  function str(key, vars) {
+    const loc = (i18nData.locales && i18nData.locales[activeLang]) || i18nData.strings || fallbackStrings[activeLang];
+    const tmpl = loc[key] !== undefined ? loc[key] : (fallbackStrings[activeLang][key] !== undefined ? fallbackStrings[activeLang][key] : key);
+    if (!vars) return tmpl;
+    return String(tmpl).replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : ''));
+  }
+  function getStateLabels() {
+    const loc = (i18nData.locales && i18nData.locales[activeLang]) || null;
+    return (loc && loc.labels) || i18nData.labels || fallbackStrings[activeLang].labels;
+  }
 
   const getConversationId = () => {
     return (
@@ -85,7 +123,7 @@
 
   async function loadSession() {
     if (!convId) {
-      headerStateBadge.textContent = '无会话';
+      headerStateBadge.textContent = str('noSessionBadge');
       return;
     }
 
@@ -93,6 +131,7 @@
       const res = await apiFetch(`/api/session?conversationId=${encodeURIComponent(convId)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (data?.lang === 'en' || data?.lang === 'zh') activeLang = data.lang;
       session = data;
       renderOverview();
       if (!isEditMode) {
@@ -100,7 +139,7 @@
       }
     } catch (err) {
       console.warn('[things_board] Failed to load session:', err.message);
-      headerStateBadge.textContent = '离线';
+      headerStateBadge.textContent = str('offlineBadge');
     }
   }
 
@@ -134,8 +173,9 @@
     if (!session) return;
 
     // Header State Badge
+    const stateLabels = getStateLabels();
     const state = session.state || 'unstarted';
-    headerStateBadge.textContent = STATE_LABELS[state] || state;
+    headerStateBadge.textContent = stateLabels[state] || state;
     headerStateBadge.className = 'badge badge-state ' + (state ? `state-${state}` : '');
 
     // Hero Progress
@@ -145,7 +185,7 @@
 
     const total = session.totalTasks || 0;
     const completed = session.completedTasks || 0;
-    heroFraction.textContent = `${completed} / ${total} 项已完成`;
+    heroFraction.textContent = str('totalsPattern', { done: completed, total });
 
     // Note Card
     if (session.note && session.note.trim()) {
@@ -296,7 +336,7 @@
     try {
       isSaving = true;
       btnSave.disabled = true;
-      btnSave.textContent = '保存中…';
+      btnSave.textContent = str('savingBtn');
 
       const payload = {
         type: 'update',
@@ -317,9 +357,9 @@
 
       if (res.status === 409) {
         const errJson = await res.json();
-        conflictText.textContent = errJson.error || '保存冲突：内容已被外部修改';
+        conflictText.textContent = errJson.error || str('conflictBanner');
         conflictBanner.classList.remove('hidden');
-        showToast('保存冲突，已保留当前草稿');
+        showToast(str('conflictShortToast'));
         return;
       }
 
@@ -328,22 +368,22 @@
         throw new Error(errJson.error || `HTTP ${res.status}`);
       }
 
-      showToast('✓ 保存成功');
+      showToast(str('savedFeedback'));
       isFormDirty = false;
       await loadSession();
       setEditMode(false);
     } catch (err) {
-      showToast(`保存失败: ${err.message}`);
+      showToast(`${str('saveFailedPrefix')}${err.message}`);
     } finally {
       isSaving = false;
       btnSave.disabled = false;
-      btnSave.textContent = '保存修改';
+      btnSave.textContent = str('saveBtn');
     }
   });
 
   btnClear?.addEventListener('click', async () => {
     if (isSaving || !session) return;
-    if (!confirm('确定要清除本会话的任务进度和记录吗？此操作不可逆。')) return;
+    if (!confirm(str('clearConfirm'))) return;
 
     try {
       isSaving = true;
@@ -365,12 +405,12 @@
         throw new Error(errJson.error || `HTTP ${res.status}`);
       }
 
-      showToast('✓ 会话进度已清空');
+      showToast(str('clearedFeedback'));
       isFormDirty = false;
       await loadSession();
       setEditMode(false);
     } catch (err) {
-      showToast(`清除失败: ${err.message}`);
+      showToast(`${str('clearFailedPrefix')}${err.message}`);
     } finally {
       isSaving = false;
       btnClear.disabled = false;

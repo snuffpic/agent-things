@@ -15,6 +15,7 @@ async function loadHooks(t, payload) {
     if (name.endsWith('.js')) fs.copyFileSync(path.join(hooksDir, name), path.join(tempDir, name));
   }
   const pres = await import(`${pathToFileURL(path.join(tempDir, 'presentation.js')).href}?v=${Math.random()}`);
+  const ctrls = await import(`${pathToFileURL(path.join(tempDir, 'controls.js')).href}?v=${Math.random()}`);
   const reg = await import(`${pathToFileURL(path.join(tempDir, 'register.js')).href}?v=${Math.random()}`);
 
   const handlers = new Map();
@@ -54,6 +55,7 @@ async function loadHooks(t, payload) {
   for (let i = 0; i < 6; i++) await Promise.resolve();
   return {
     pres,
+    controls: ctrls.default,
     async renderPane(columns) {
       const renderHandlers = handlers.get('ui.render') || [];
       return renderHandlers[1]($, {
@@ -151,4 +153,39 @@ test('narrow Pane keeps circular rings non-shrinking, matches single-line height
     node.children[0].props?.width === 96 &&
     node.children[0].props?.height === 48);
   assert.equal(scoreBoxes.length, 1);
+});
+
+test('wide Pane passes adaptive width to slider and uses aspect-preserved SVGs across slider and action buttons', async t => {
+  const payload = {
+    revision: 4,
+    key: '["local","desktop"]',
+    title: 'Wide Pane Stretch Guard',
+    record: { revision: 4, state: 'unfinished', progress: 25, source: 'manual', note: '', updatedAt: Date.now() },
+    analysis: { ledger: { tasks: [] } },
+    timeline: [],
+    projectGit: { hasRemote: true },
+  };
+  const { renderPane, controls } = await loadHooks(t, payload);
+  let paneTree = await renderPane(64);
+  const editBtn = findNodes(paneTree, node => node.type === 'Button' && node.props?.key === 'edit')[0];
+  assert.ok(editBtn);
+  await editBtn.props.onPress();
+  paneTree = await renderPane(64);
+
+  const sliderClient = findNodes(paneTree, node => node.type === 'Client' && node.props?.key === 'progress-slider')[0];
+  assert.ok(sliderClient);
+  const expectedWidth = Math.max(130, Math.round((64 - 2.2) * 9.3));
+  assert.equal(sliderClient.props.props.width, expectedWidth);
+
+  const surface = { columns: 62, rows: 6, state: null, setState(next) { this.state = next; }, onPointer() {}, onKey() {}, post() {} };
+  const sliderSvg = controls(sliderClient.props.props, surface);
+  assert.equal(sliderSvg.props.width, expectedWidth);
+  assert.match(sliderSvg.props.source, new RegExp(`width="${expectedWidth}" height="110" preserveAspectRatio="xMinYMid meet"`));
+  assert.match(sliderSvg.props.source, new RegExp(`width="${expectedWidth}" height="51" preserveAspectRatio="xMinYMid meet"`));
+  assert.equal(sliderSvg.props.source.includes('preserveAspectRatio="none"'), false);
+
+  const saveClient = findNodes(paneTree, node => node.type === 'Client' && node.props?.key === 'save')[0];
+  const saveSvg = controls(saveClient.props.props, { ...surface, state: null });
+  assert.ok(saveSvg.props.width < 4096 && saveSvg.props.width >= 80);
+  assert.match(saveSvg.props.source, /preserveAspectRatio="xMidYMid meet"/);
 });

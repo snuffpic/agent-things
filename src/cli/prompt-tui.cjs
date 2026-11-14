@@ -2,6 +2,7 @@
 const { version } = require('../../package.json');
 const readline = require('node:readline');
 const { formatProbeText } = require('./environment-probe.cjs');
+const { detectSystemLang } = require('../i18n.cjs');
 
 // ANSI escape codes
 const HIDE_CURSOR = '\x1b[?25l';
@@ -25,11 +26,12 @@ function getProbeIcon(item) {
 /**
  * Screen 1: Select Language with dynamic environment preview
  */
-async function selectLanguageWithProbe(env, defaultLang = 'zh') {
+async function selectLanguageWithProbe(env, defaultLang = detectSystemLang()) {
   const stdin = process.stdin;
   const stdout = process.stdout;
-  if (!stdin.isTTY) throw new Error('交互模式需要终端；自动安装请使用 setup --yes。');
+  if (!stdin.isTTY) throw new Error('Interactive mode requires a terminal; use setup --yes for automatic installation. / 交互模式需要终端；自动安装请使用 setup --yes。');
   const wasRaw = stdin.isRaw;
+  const systemLang = detectSystemLang();
 
   const languages = [
     { code: 'zh', label: '简体中文 (Chinese)' },
@@ -55,7 +57,10 @@ async function selectLanguageWithProbe(env, defaultLang = 'zh') {
       const isSelected = i === selectedIndex;
       const marker = isSelected ? `${CYAN}❯${RESET}` : ' ';
       const bullet = isSelected ? `${CYAN}(●)${RESET}` : `${GRAY}( )${RESET}`;
-      const text = isSelected ? `${BOLD}${opt.label}${RESET}` : `${opt.label}`;
+      const sysTag = opt.code === systemLang
+        ? ` ${DIM}${isZh ? '(系统推荐 / System default)' : '(System default)'}${RESET}`
+        : '';
+      const text = (isSelected ? `${BOLD}${opt.label}${RESET}` : `${opt.label}`) + sysTag;
       lines.push(`  ${marker} ${bullet} ${text}`);
     }
 
@@ -94,7 +99,7 @@ async function selectLanguageWithProbe(env, defaultLang = 'zh') {
 
       if (key.ctrl && key.name === 'c') {
         cleanup(); stdout.write(SHOW_CURSOR);
-        reject(Object.assign(new Error('操作已取消。'), { code: 'CLI_CANCELLED' })); return;
+        reject(Object.assign(new Error(languages[selectedIndex].code === 'zh' ? '操作已取消。' : 'Cancelled.'), { code: 'CLI_CANCELLED' })); return;
       }
       if (key.name === 'escape') {
         cleanup(); stdout.write(SHOW_CURSOR); resolve(null); return;
@@ -113,7 +118,7 @@ async function selectLanguageWithProbe(env, defaultLang = 'zh') {
       }
     }
 
-    function onEnd() { cleanup(); stdout.write(SHOW_CURSOR); reject(Object.assign(new Error('输入已结束，操作取消。'), { code: 'CLI_CANCELLED' })); }
+    function onEnd() { cleanup(); stdout.write(SHOW_CURSOR); reject(Object.assign(new Error(languages[selectedIndex].code === 'zh' ? '输入已结束，操作取消。' : 'Input ended; cancelled.'), { code: 'CLI_CANCELLED' })); }
     function cleanup() {
       stdin.removeListener('end', onEnd); stdin.removeListener('close', onEnd);
       stdin.removeListener('keypress', onKeyPress);
@@ -134,7 +139,7 @@ async function selectApps(env, lang = 'zh', enabledApps = null) {
   const isZh = lang === 'zh';
   const stdin = process.stdin;
   const stdout = process.stdout;
-  if (!stdin.isTTY) throw new Error('交互模式需要终端；自动安装请使用 setup --yes。');
+  if (!stdin.isTTY) throw new Error(isZh ? '交互模式需要终端；自动安装请使用 setup --yes。' : 'Interactive mode requires a terminal; use setup --yes for automatic installation.');
   const wasRaw = stdin.isRaw;
 
   const appOptions = [
@@ -206,7 +211,7 @@ async function selectApps(env, lang = 'zh', enabledApps = null) {
 
       if (key.ctrl && key.name === 'c') {
         cleanup(); stdout.write(SHOW_CURSOR);
-        reject(Object.assign(new Error('操作已取消。'), { code: 'CLI_CANCELLED' })); return;
+        reject(Object.assign(new Error(isZh ? '操作已取消。' : 'Cancelled.'), { code: 'CLI_CANCELLED' })); return;
       }
       if (key.name === 'escape') {
         cleanup(); stdout.write(SHOW_CURSOR); resolve(null); return;
@@ -237,7 +242,7 @@ async function selectApps(env, lang = 'zh', enabledApps = null) {
       }
     }
 
-    function onEnd() { cleanup(); stdout.write(SHOW_CURSOR); reject(Object.assign(new Error('输入已结束，操作取消。'), { code: 'CLI_CANCELLED' })); }
+    function onEnd() { cleanup(); stdout.write(SHOW_CURSOR); reject(Object.assign(new Error(isZh ? '输入已结束，操作取消。' : 'Input ended; cancelled.'), { code: 'CLI_CANCELLED' })); }
     function cleanup() {
       stdin.removeListener('end', onEnd); stdin.removeListener('close', onEnd);
       stdin.removeListener('keypress', onKeyPress);
@@ -258,7 +263,7 @@ async function askConfirm(question, defaultYes = true, lang = 'zh') {
   const isZh = lang === 'zh';
   const stdin = process.stdin;
   const stdout = process.stdout;
-  if (!stdin.isTTY) throw new Error('交互模式需要终端；自动安装请使用 setup --yes。');
+  if (!stdin.isTTY) throw new Error(isZh ? '交互模式需要终端；自动安装请使用 setup --yes。' : 'Interactive mode requires a terminal; use setup --yes for automatic installation.');
   const wasRaw = stdin.isRaw;
 
   let isYes = defaultYes;
@@ -293,7 +298,7 @@ async function askConfirm(question, defaultYes = true, lang = 'zh') {
 
       if (key.ctrl && key.name === 'c') {
         cleanup(); stdout.write(SHOW_CURSOR);
-        reject(Object.assign(new Error('操作已取消。'), { code: 'CLI_CANCELLED' })); return;
+        reject(Object.assign(new Error(isZh ? '操作已取消。' : 'Cancelled.'), { code: 'CLI_CANCELLED' })); return;
       }
       if (key.name === 'escape') {
         cleanup(); stdout.write(SHOW_CURSOR); resolve(null); return;
@@ -309,7 +314,7 @@ async function askConfirm(question, defaultYes = true, lang = 'zh') {
       }
     }
 
-    function onEnd() { cleanup(); stdout.write(SHOW_CURSOR); reject(Object.assign(new Error('输入已结束，操作取消。'), { code: 'CLI_CANCELLED' })); }
+    function onEnd() { cleanup(); stdout.write(SHOW_CURSOR); reject(Object.assign(new Error(isZh ? '输入已结束，操作取消。' : 'Input ended; cancelled.'), { code: 'CLI_CANCELLED' })); }
     function cleanup() {
       stdin.removeListener('end', onEnd); stdin.removeListener('close', onEnd);
       stdin.removeListener('keypress', onKeyPress);
@@ -330,7 +335,7 @@ async function selectMenu(title, options, lang = 'zh') {
   const isZh = lang === 'zh';
   const stdin = process.stdin;
   const stdout = process.stdout;
-  if (!stdin.isTTY) throw new Error('交互模式需要终端；自动安装请使用 setup --yes。');
+  if (!stdin.isTTY) throw new Error(isZh ? '交互模式需要终端；自动安装请使用 setup --yes。' : 'Interactive mode requires a terminal; use setup --yes for automatic installation.');
   const wasRaw = stdin.isRaw;
 
   let selectedIndex = 0;
@@ -374,7 +379,7 @@ async function selectMenu(title, options, lang = 'zh') {
 
       if (key.ctrl && key.name === 'c') {
         cleanup(); stdout.write(SHOW_CURSOR);
-        reject(Object.assign(new Error('操作已取消。'), { code: 'CLI_CANCELLED' })); return;
+        reject(Object.assign(new Error(isZh ? '操作已取消。' : 'Cancelled.'), { code: 'CLI_CANCELLED' })); return;
       }
       if (key.name === 'escape') {
         cleanup(); stdout.write(SHOW_CURSOR); resolve(null); return;
@@ -393,7 +398,7 @@ async function selectMenu(title, options, lang = 'zh') {
       }
     }
 
-    function onEnd() { cleanup(); stdout.write(SHOW_CURSOR); reject(Object.assign(new Error('输入已结束，操作取消。'), { code: 'CLI_CANCELLED' })); }
+    function onEnd() { cleanup(); stdout.write(SHOW_CURSOR); reject(Object.assign(new Error(isZh ? '输入已结束，操作取消。' : 'Input ended; cancelled.'), { code: 'CLI_CANCELLED' })); }
     function cleanup() {
       stdin.removeListener('end', onEnd); stdin.removeListener('close', onEnd);
       stdin.removeListener('keypress', onKeyPress);

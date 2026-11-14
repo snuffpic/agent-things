@@ -1,6 +1,12 @@
 'use strict';
 // Local conversation surface; its lifetime is owned by the Codex adapter.
 function createCodexLocalCards({ mount, send, snapshot, restored }) {
+  const getFallbackTitle = () => {
+    const p = window.__agentThingsPresentation;
+    const lang = snapshot()?.lang || window.__agentThingsLang || p?.lang || 'zh';
+    const ui = p?.forLang ? p.forLang(lang) : null;
+    return ui?.strings?.fallbackShortTitle ?? p?.strings?.fallbackShortTitle ?? '会话进度';
+  };
   const states = new Map(restored || []);
   let active = null, stopped = false, reconciling = false;
   const visible = node => node?.isConnected && node.getClientRects().length > 0;
@@ -21,7 +27,7 @@ function createCodexLocalCards({ mount, send, snapshot, restored }) {
     const id = row.getAttribute('data-app-action-sidebar-thread-id');
     if (!id) return null;
     return { composer: composers[0], content: contents[0], theme: theme(row), key: JSON.stringify([row.getAttribute('data-app-action-sidebar-thread-host-id') || (kind === 'remote' ? 'cloud' : 'local'), id]),
-      title: row.getAttribute('data-app-action-sidebar-thread-title') || '会话进度' };
+      title: row.getAttribute('data-app-action-sidebar-thread-title') || getFallbackTitle() };
   }
   function retain() {
     if (!active) return;
@@ -33,7 +39,7 @@ function createCodexLocalCards({ mount, send, snapshot, restored }) {
     retain();
     const container = document.createElement('section');
     container.setAttribute('data-agent-things-local-card', entry.key);
-    container.setAttribute('aria-label', '会话进度');
+    container.setAttribute('aria-label', getFallbackTitle());
     container.style.cssText = 'width:340px;max-width:100%;margin:12px 0;flex:none';
     entry.content.append(container);
     try {

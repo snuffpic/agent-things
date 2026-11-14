@@ -1,212 +1,222 @@
 # Agent Things
 
-当你在同时处理多个会话时或太久没使用某个会话，Agent Things 可以帮助你快速了解会话的进度和待办事项，从而判断是否需要归档和追踪，你还可以点击查看来源快速跳转、回顾历史信息。
+English | [简体中文](README.zh-CN.md)
 
-Agent Things 是 macOS 上的 AI 编程会话进度插件，支持 **ChatGPT**、**Antigravity** 和 **Claude Desktop** 本地会话。灵感来自 [Things 3](https://culturedcode.com/things/)：用一个进度圆环概括一件事做到了哪里，打开后就是一份清楚的待办清单。
+When you juggle several sessions at once, or come back to one you haven't touched in a while, Agent Things shows you at a glance how far each session has got and what is still open, so you can decide whether to archive it or keep following up. You can also jump from any task back to the message it came from.
 
-> 当前为 Beta 版本，已知限制见文末。本项目与 Cultured Code、OpenAI、Google、Anthropic 均无关联。
+Agent Things is a session progress plugin for AI coding sessions on macOS. It supports local sessions in **ChatGPT**, **Antigravity** and **Claude Desktop**. Inspired by [Things 3](https://culturedcode.com/things/): one progress ring sums up where a piece of work stands, and opening it gives you a clear to-do list.
+
+> This is a beta release; see Known limitations below. This project is not affiliated with Cultured Code, OpenAI, Google or Anthropic.
 
 <table>
   <tr>
-    <td width="50%"><img src="assets/readme/sidebar-panel.png" alt="会话列表中的进度圆环与状态面板"></td>
-    <td width="50%"><img src="assets/readme/manual-adjust.png" alt="手动记录会话状态、进度与备注"></td>
+    <td width="50%"><img src="assets/readme/sidebar-panel.png" alt="Progress rings in the session list and the status panel"></td>
+    <td width="50%"><img src="assets/readme/manual-adjust.png" alt="Manually recording a session's status, progress and notes"></td>
   </tr>
   <tr>
-    <td align="center">会话列表的进度圆环与状态面板</td>
-    <td align="center">手动调整状态、进度与备注</td>
+    <td align="center">Progress rings in the session list and the status panel</td>
+    <td align="center">Adjust status, progress and notes by hand</td>
   </tr>
   <tr>
-    <td width="50%"><img src="assets/readme/claude-inline-card.png" alt="在 Claude 会话中用 /things 查看进度卡片"></td>
-    <td width="50%"><img src="assets/readme/antigravity-panel.png" alt="Antigravity 侧边的 Things 面板"></td>
+    <td width="50%"><img src="assets/readme/claude-inline-card.png" alt="The /things progress card in a Claude session"></td>
+    <td width="50%"><img src="assets/readme/antigravity-panel.png" alt="The Things side panel in Antigravity"></td>
   </tr>
   <tr>
-    <td align="center">在会话中输入 <code>/things</code> 查看进度（Claude）</td>
-    <td align="center">Antigravity 侧边的 Things 面板</td>
+    <td align="center">Type <code>/things</code> in a session to see its progress (Claude)</td>
+    <td align="center">The Things side panel in Antigravity</td>
   </tr>
 </table>
 
-## 功能
+## Features
 
-**快速查看进度**
+**See progress at a glance**
 
-- 会话列表每一项左侧显示进度圆环，数字是完成百分比；颜色表示会话状态：灰色为尚未开始，金色为有遗留事项，蓝色为全部完成，紫色为全部完成并已推送到远端（如 origin/main）。
-- 点击圆环打开状态面板，查看会话状态、完成比例、一句话概括、剩余任务和已完成任务。
+- Each item in the session list gets a progress ring; the number is the completion percentage. The color shows the session's state: gray for not started, gold for remaining items, blue for completed, and purple for completed and pushed to the remote (for example origin/main).
+- Click the ring to open the status panel, with the session's state, completion rate, a one-line summary, remaining tasks and completed tasks.
 
-**自动整理任务**
+**Tasks organized for you**
 
-- 点击「更新进度」，插件读取会话中的对话，调用你已登录的模型整理出任务清单，区分已完成和剩余的事项，并标出受阻的任务。
-（默认选用性价比最高的模型：ChatGPT：Luna，claude code：Haiku，Antigravity：Gemini 3.8）
-- 再次更新时只增量处理新的对话，已有任务和完成记录保持不变。
-- 每项任务都能跳回会话中对应的原文，方便核对。
+- Click **Update progress** and the plugin reads the conversation, asks the model you are already signed in to for a task list, separates completed from remaining items and flags blocked tasks.
+  (By default it picks the most cost-effective model in each client: ChatGPT: Luna, Claude Code: Haiku, Antigravity: Gemini 3.8.)
+- Later updates only process new messages; existing tasks and completion records stay as they are.
+- Every task links back to the message it came from, so you can check it.
 
-**手动记录**
+**Record things yourself**
 
-- 「手动调整」可以直接设置状态（尚未开始 / 有遗留事项 / 全部完成）、拖动进度，并填写备注。
-- 「清除进度」会清空该会话的进度、任务、备注与进展记录。
+- **Adjust** lets you set the state (Not started / Remaining items / Completed), drag the progress and write notes.
+- **Clear** removes the session's progress, tasks, notes and history.
 
-**在会话里直接问**
+**Ask from inside the session**
 
-- 在任意会话中输入 `/things`，模型会读取这份清单，在消息流中显示进度卡片，并读取或更新进度（搭配Skill使用）。
-- 插件同时注册 MCP 工具（读取 / 更新进度、更新任务、列出所有会话、清除进度），助手在工作过程中也可以自己记录进度。
+- Type `/things` in any session and the model reads the checklist, shows a progress card in the conversation, and reads or updates progress (works together with the bundled skill).
+- The plugin also registers MCP tools (read / update progress, update tasks, list all sessions, clear progress), so the assistant can record progress on its own while it works.
 
-## 支持的客户端
+**English and Chinese**
 
-| 客户端                        | 显示位置                             | 首次使用需要做的事                                                               |
-| -------------------------- | -------------------------------- | ----------------------------------------------------------------------- |
-| ChatGPT                    | 会话列表进度圆环、状态面板、`/things`          | 无。从 Dock 正常打开即可，见下方“为什么 ChatGPT 会重新打开一次”                                  |
-| Antigravity                | 会话列表进度圆环、侧边 Things 面板、`/things`  | 无                                                                       |
-| Claude Desktop（本地 Code 会话） | 消息流中的 `/things` 卡片；会话列表进度圆环需手动开启 | 安装后执行 `/reload-plugins`；如需会话列表圆环，开启「开发者 → Enable Main Process Debugger」 |
+- The interface, the `/things` card, the skills and the tasks the model writes all use one language: English or Simplified Chinese.
+- The first install suggests your system language; you can switch it later from the management menu. After switching, the next **Update progress** rewrites existing tasks in the new language.
 
-## 安装
+## Supported clients
 
-需要 macOS（Apple Silicon 或 Intel）、Node.js 22 及以上，以及已安装并登录的上述客户端之一。
+| Client | Where it shows | First-time setup |
+| --- | --- | --- |
+| ChatGPT | Progress rings in the session list, status panel, `/things` | None. Open it from the Dock as usual; see "Why does ChatGPT close and reopen once?" below |
+| Antigravity | Progress rings in the session list, Things side panel, `/things` | None |
+| Claude Desktop (local Code sessions) | `/things` card in the conversation; session-list rings must be turned on | Run `/reload-plugins` after installing; for session-list rings, turn on **Developer → Enable Main Process Debugger** |
+
+## Installation
+
+Requires macOS (Apple Silicon or Intel), Node.js 22 or later, and at least one of the clients above, installed and signed in.
 
 ```sh
 npx agent-things
 ```
 
-按向导选择要启用的客户端（向导支持中文和英文）。安装会在用户目录中写入插件运行时、后台服务、MCP 配置和 `/things` 技能，过程中不需要关闭已打开的客户端。安装完成后，在客户端中重新连接 MCP 服务。
+The wizard asks for your language and the clients to enable. It installs the plugin runtime, a background service, the MCP configuration and the `/things` skills into your user folder; you don't need to close any open client. When it finishes, reconnect the MCP server in your client.
 
-如需跳过选择、自动配置已安装的全部客户端：
+To skip the questions and set up every installed client:
 
 ```sh
 npx agent-things setup --yes
 ```
 
-需要强制使用最新版本时，可运行 `npx agent-things@latest`。
+To force the latest version, run `npx agent-things@latest`.
 
-## 数据与隐私
+## Data and privacy
 
-- 进度、任务和备注只保存在本机：
-  - ChatGPT：`~/Library/Application Support/CodexSessionStatus/manual-state.json`
-  - Antigravity：`~/.gemini/antigravity/session-status/manual-state.json`
-  - Claude：`~/Library/Application Support/AgentThings/claude/manual-state.json`
-- 插件没有任何遥测或上传服务。
-- 「更新进度」会通过本机已登录的 ChatGPT 内置 Codex CLI、Antigravity 命令行或 Claude Code（Haiku）调用模型，并把会话中的用户与助手文本发送给该模型；工具原始输出、思考过程和图片不会发送。
-- 插件通过客户端的本机调试接口显示界面，只接受本机回环地址。详细说明见 [SECURITY.md](SECURITY.md)。
+- Progress, tasks and notes are stored only on your Mac:
+  - ChatGPT: `~/Library/Application Support/CodexSessionStatus/manual-state.json`
+  - Antigravity: `~/.gemini/antigravity/session-status/manual-state.json`
+  - Claude: `~/Library/Application Support/AgentThings/claude/manual-state.json`
+- The plugin has no telemetry and uploads nothing.
+- **Update progress** calls a model through the Codex CLI built into ChatGPT, the Antigravity command line, or Claude Code (Haiku), whichever you are signed in to locally, and sends the user and assistant text of the session to that model. Raw tool output, reasoning and images are not sent.
+- The plugin draws its interface through each client's local debugging interface and only accepts loopback addresses. See [SECURITY.md](SECURITY.md) for details.
 
-## 升级与卸载
+## Updating and uninstalling
 
-- 插件每天从 npm 官方仓库检查一次新版本，面板备注下方和管理菜单都会提示升级。
-- 升级在独立的后台任务中执行，可以关闭终端和面板；会等待正在进行的分析结束，并保留账本和客户端选择。
-- 再次运行 `npx agent-things`，在菜单中选择卸载：停止后台服务，移除 MCP 入口和程序文件，保留账本与备份。
+- The plugin checks the official npm registry for a new version once a day; both the panel (below the notes) and the management menu show when an update is available.
+- Updates run as a separate background job, so you can close the terminal and the panel. They wait for any running analysis to finish and keep your ledger and client selection.
+- To uninstall, run `npx agent-things` again and choose Uninstall from the menu. This stops the background service and removes the MCP entries and program files, keeping your ledger and backups.
 
-## 命令
+## Commands
 
-所有命令都通过 `npx agent-things <命令>` 运行。日常使用只需要前两条，其余用于排查或手动管理。
+Every command runs as `npx agent-things <command>`. Day-to-day you only need the first two; the rest are for troubleshooting or manual management.
 
-| 命令 | 说明 |
+| Command | What it does |
 | --- | --- |
-| `npx agent-things` | 打开交互式向导：首次运行时安装，之后进入管理菜单（查看运行状态、修改启用的客户端、检查更新 / 升级、同步组件与技能、卸载） |
-| `npx agent-things setup` | 同上；加 `--yes`（或 `--all`）跳过选择并配置已安装的全部客户端，加 `--lang zh` 或 `--lang en` 指定界面语言 |
-| `npx agent-things doctor` | 查看客户端、后台服务和界面挂载的诊断信息 |
-| `npx agent-things --help` | 显示命令帮助 |
+| `npx agent-things` | Opens the interactive wizard: installs on first run, then opens the management menu (Health check, Update enabled apps, Switch language, Check for updates / upgrade, Sync components and skills, Uninstall) |
+| `npx agent-things setup` | Same as above. Add `--yes` (or `--all`) to skip the questions and set up every installed client; add `--lang en` or `--lang zh` to choose the interface and analysis language (without it, the existing setting is kept, or the system language is used on first install) |
+| `npx agent-things doctor` | Shows diagnostics for clients, the background service and interface mounting |
+| `npx agent-things --help` | Shows command help |
 
-以下命令只作用于 ChatGPT：
+These commands apply to ChatGPT only:
 
-| 命令 | 说明 |
+| Command | What it does |
 | --- | --- |
-| `npx agent-things status` | 以 JSON 输出账本位置、已记录的会话数、后台服务与界面挂载状态 |
-| `npx agent-things run` | 在前台运行进度服务并挂载界面，用于调试；按 Ctrl+C 退出。加 `--watch-startup` 同时接管 ChatGPT 的启动交接 |
-| `npx agent-things mcp` | 以 stdio 方式运行 MCP 服务，一般由客户端自动调用 |
-| `npx agent-things install-mcp` | 把 MCP 服务写入 `~/.codex/config.toml` |
-| `npx agent-things disable-mcp` | 从 `~/.codex/config.toml` 中移除 MCP 服务 |
-| `npx agent-things install-autostart` | 安装后台服务，登录后自动运行并挂载界面 |
-| `npx agent-things disable-autostart` | 关闭后台服务，保留已有记录 |
-| `npx agent-things update-renderer` | 用当前版本的界面资源替换已安装的资源 |
+| `npx agent-things status` | Prints, as JSON, the ledger location, the number of recorded sessions, and the state of the background service and interface mounting |
+| `npx agent-things run` | Runs the progress service and mounts the interface in the foreground, for debugging; press Ctrl+C to exit. Add `--watch-startup` to also handle ChatGPT's startup handoff |
+| `npx agent-things mcp` | Runs the MCP server over stdio; normally started by the client |
+| `npx agent-things install-mcp` | Adds the MCP server to `~/.codex/config.toml` |
+| `npx agent-things disable-mcp` | Removes the MCP server from `~/.codex/config.toml` |
+| `npx agent-things install-autostart` | Installs the background service, which starts at login and mounts the interface |
+| `npx agent-things disable-autostart` | Turns off the background service, keeping existing records |
+| `npx agent-things update-renderer` | Replaces the installed interface resources with the ones from this version |
 
-`run`、`status`、`mcp` 支持 `--port <端口>`（默认 39222）；`run`、`status`、`mcp`、`install-autostart`、`update-renderer` 支持 `--data-dir <目录>` 指定数据目录。
+`run`, `status` and `mcp` accept `--port <port>` (default 39222); `run`, `status`, `mcp`, `install-autostart` and `update-renderer` accept `--data-dir <folder>` to use a different data folder.
 
-## 常见问题
+## FAQ
 
-**为什么 ChatGPT 打开后窗口会关掉再重新打开一次？**
+**How do I switch between English and Chinese?**
 
-ChatGPT 桌面应用的正式版不允许外部程序在运行中接入界面，只能在启动时附加本机调试端口。插件会在窗口就绪后请求它正常退出（与 ⌘Q 相同，会完成保存），再带上调试端口重新打开。整个过程通常需要 15 秒或更久，主要取决于客户端自身的退出收尾。Antigravity 和 Claude 支持运行中接入，Claude 如未打开「Enable Main Process Debugger」，将仅可使用会话内卡片。
+Run `npx agent-things` and choose **Switch language** in the management menu. This reinstalls the skills for all three clients and the interface switches with it; reconnect the MCP server in your client so the assistant also sees the tool descriptions in the new language. Existing tasks are rewritten in the new language at the next **Update progress**; notes are left as they are.
 
-**会话列表里看不到进度圆环怎么办？**
+**Why does ChatGPT close and reopen once?**
 
-运行 `npx agent-things doctor`，查看客户端、后台服务和界面挂载的诊断信息。ChatGPT 刚打开时需要等它重新打开一次；Claude 的会话列表圆环需要先开启「Enable Main Process Debugger」。
+The release build of the ChatGPT desktop app doesn't let outside programs attach to its interface while it is running; the local debugging port can only be added at launch. Once the window is ready, the plugin asks ChatGPT to quit normally (the same as ⌘Q, so your work is saved) and reopens it with the debugging port. This usually takes 15 seconds or more, mostly spent in the client's own shutdown. Antigravity and Claude can be attached while running; without **Enable Main Process Debugger**, Claude only gets the in-conversation card.
 
-**会修改客户端吗？**
+**I don't see the progress rings in the session list. What should I do?**
 
-不会。插件不修改任何客户端的应用包、签名或安全设置，客户端更新也不会受影响。
+Run `npx agent-things doctor` to see diagnostics for the clients, the background service and interface mounting. Right after ChatGPT opens, wait for it to reopen once; Claude's session-list rings need **Enable Main Process Debugger** turned on first.
 
-**是否支持手动添加待办事项？**
+**Does it modify the clients?**
 
-Agent Things 依赖 LLM 更新具体待办事项，免去了繁琐的记录过程。如有需要记录的内容，可使用备注记录，但不排除在未来添加通过对话添加待办事项的功能。
+No. The plugin doesn't change any client's app bundle, signature or security settings, and client updates are unaffected.
 
-**进度会自动更新吗？**
+**Can I add to-do items by hand?**
 
-不会定时自动更新。进度在以下三种情况下更新：点击面板中的「更新进度」；在会话中输入 `/things` 让助手读取或更新；助手在工作过程中通过 MCP 工具自行记录。这样不会在你没注意的时候消耗模型额度。
+Agent Things relies on the LLM to keep the task list up to date, which saves you from tedious bookkeeping. If there is something you want to write down, use the notes. Adding tasks through the conversation may come in a future release.
 
-**「更新进度」会消耗我的模型额度吗？**
+**Does progress update automatically?**
 
-会。分析使用你在对应客户端中已登录的账号，默认选用该客户端里性价比最高的模型。再次更新时只处理上次之后新增的对话，消耗会明显少于首次分析。
+Not on a timer. Progress updates in three ways: clicking **Update progress** in the panel; typing `/things` in the session so the assistant reads or updates it; and the assistant recording progress through the MCP tools while it works. This way it never uses your model quota without you noticing.
 
-**模型整理的任务不准确怎么办？**
+**Does Update progress use my model quota?**
 
-可以先补充几句对话说明实际情况，再点「更新进度」重新整理；也可以用「手动调整」直接修改状态、进度和备注。如果整份清单偏差很大，可以「清除进度」后重新分析。
+Yes. Analysis uses the account you are signed in to in that client, with the most cost-effective model available there by default. Later updates only process messages added since the last one, so they cost much less than the first analysis.
 
-**「清除进度」可以撤销吗？**
+**What if the model's task list is wrong?**
 
-不可以。清除会立即删除该会话的进度、全部任务、备注和进展记录，且不保留备份。
+Add a few messages explaining what actually happened, then click **Update progress** again; or use **Adjust** to change the state, progress and notes directly. If the whole list is far off, **Clear** it and analyze again.
 
-**为什么有的会话没有显示进度圆环？**
+**Can I undo Clear?**
 
-没有任何记录的会话默认不显示圆环，鼠标移到该会话上或选中它时才会出现，点击即可开始记录。分析进行中的会话会显示加载状态。
+No. Clearing immediately deletes the session's progress, all tasks, notes and history, with no backup.
 
-**紫色圆环代表什么？**
+**Why do some sessions have no progress ring?**
 
-表示任务全部完成，且对话显示改动已推送到远端仓库。只有项目配置了 Git 远端时才会出现这个状态。插件只在本机读取项目是否配置了 Git 远端，不访问网络。
+Sessions with no record don't show a ring until you hover over or select them; click it to start recording. Sessions being analyzed show a loading state.
 
-**分析时会读取我的代码吗？**
+**What does the purple ring mean?**
 
-不会。分析只使用会话中的用户与助手文本；工具原始输出、思考过程和图片都不会发送给模型。插件也不会读取项目文件内容。
+All tasks are complete and the conversation shows the changes were pushed to the remote repository. It only appears when the project has a Git remote configured. The plugin checks for a Git remote locally and never goes online to do so.
 
-**可以关闭 ChatGPT 启动时的自动重开吗？**
+**Does analysis read my code?**
 
-目前没有菜单开关。可以把 `~/Library/Application Support/CodexSessionStatus/autostart.json` 中的 `allowClientRestart` 改为 `false`，再运行 `npx agent-things` 重新安装以重启后台服务。关闭后，ChatGPT 只有在带调试端口启动时才会显示进度圆环，`/things` 和 MCP 工具不受影响。
+No. Analysis only uses the user and assistant text in the session; raw tool output, reasoning and images are never sent to the model. The plugin doesn't read your project files either.
 
-**客户端更新后进度圆环不见了怎么办？**
+**Can I turn off the automatic reopen when ChatGPT starts?**
 
-先运行 `npx agent-things doctor` 查看诊断。如果客户端界面结构有较大变化，需要等待插件发布适配新版本；在此期间，`/things` 和 MCP 工具通常仍可使用，账本数据不受影响。
+There is no menu option yet. Set `allowClientRestart` to `false` in `~/Library/Application Support/CodexSessionStatus/autostart.json`, then run `npx agent-things` and reinstall to restart the background service. After that, ChatGPT only shows progress rings when it was launched with the debugging port; `/things` and the MCP tools are unaffected.
 
-**为什么 `/things` 没有反应？**
+**The progress rings disappeared after a client update. What now?**
 
-安装或升级后，需要在客户端中重新连接 MCP 服务；Claude 需要执行一次 `/reload-plugins`。仍无效时，运行 `npx agent-things doctor` 检查后台服务状态。
+Run `npx agent-things doctor` first. If the client's interface changed significantly, you'll need to wait for a plugin release that supports the new version; meanwhile `/things` and the MCP tools usually keep working and your ledger is unaffected.
 
-**可以在多台电脑之间同步进度吗？**
+**Why doesn't `/things` respond?**
 
-暂不支持。所有数据都保存在本机用户目录，没有云端服务。
+After installing or updating, reconnect the MCP server in your client; Claude also needs `/reload-plugins` once. If it still doesn't work, run `npx agent-things doctor` to check the background service.
 
-**支持 Windows 或 Linux 吗？**
+**Can progress sync between Macs?**
 
-暂不支持。插件依赖 macOS 原生接口来管理客户端的启动与界面挂载，目前仅支持 macOS（Apple Silicon 与 Intel）。
+Not yet. All data is stored in your user folder on this Mac; there is no cloud service.
 
-**卸载后数据还在吗？**
+**Does it support Windows or Linux?**
 
-卸载会保留账本与备份，重新安装后进度会自动恢复。如需彻底删除，可在卸载后手动删除“数据与隐私”中列出的三个数据目录。
+Not yet. The plugin relies on native macOS interfaces to manage client startup and interface mounting, so it currently supports macOS only (Apple Silicon and Intel).
 
-## 已知限制
+**Is my data kept after uninstalling?**
 
-- 插件依赖客户端的内部界面结构。客户端大版本更新后，界面显示可能需要插件随之更新。
-- 模型整理的任务清单可能有遗漏或合并不当，可以用「手动调整」修正。
+Uninstalling keeps your ledger and backups, and progress comes back when you reinstall. To delete everything, remove the three data folders listed under "Data and privacy" after uninstalling.
 
-## 开发
+## Known limitations
 
-参见 [CONTRIBUTING.md](CONTRIBUTING.md)。常用命令：
+- The plugin depends on each client's internal interface structure. After a major client update, the plugin may need an update too before the interface shows again.
+- The model's task list can miss items or merge them poorly; use **Adjust** to correct it.
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Common commands:
 
 ```sh
 npm ci --ignore-scripts
 npm run verify
 ```
 
-## 许可
+## License
 
 [MIT](LICENSE) © 2026 snuffpic
 
-## 更新计划
+## Roadmap
 
-- 英文语言支持
-- DeepSeek harness 支持
-- OKtaMind 支持
+- DeepSeek harness support
+- OKtaMind support

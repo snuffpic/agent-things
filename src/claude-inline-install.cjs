@@ -3,7 +3,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-function syncClaudeInline(root, enabled, { home = (process.env.HOME || os.homedir()) } = {}) {
+const { readConfiguredLang } = require('./i18n.cjs');
+
+function syncClaudeInline(root, enabled, { home = (process.env.HOME || os.homedir()), lang } = {}) {
+  const en = (lang || readConfiguredLang()) === 'en';
   const destination = path.join(home, '.claude/skills/agent-things-ui');
   const source = path.join(root, 'mods/agent-things-ui');
   const exists = fs.existsSync(destination);
@@ -13,10 +16,10 @@ function syncClaudeInline(root, enabled, { home = (process.env.HOME || os.homedi
     const manifest = fs.existsSync(manifestFile) && JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
     if (manifest?.name !== 'agent-things-ui' || manifest?.author?.name !== 'Agent Things') {
       if (!enabled) return null;
-      throw new Error('Claude 的 agent-things-ui 目录已被其他内容占用');
+      throw new Error(en ? "Claude's agent-things-ui directory is occupied by other content" : 'Claude 的 agent-things-ui 目录已被其他内容占用');
     }
   }
-  if (enabled && !fs.existsSync(source)) throw new Error('安装包缺少 Claude 会话卡片');
+  if (enabled && !fs.existsSync(source)) throw new Error(en ? 'Package is missing Claude session card' : '安装包缺少 Claude 会话卡片');
   const backup = path.join(home, 'Library/Application Support/CodexSessionStatus/backups', `claude-inline-${Date.now()}-${process.pid}`);
   fs.mkdirSync(backup, { recursive: true, mode: 0o700 });
   if (enabled) fs.cpSync(source, path.join(backup, 'staged'), { recursive: true });

@@ -12,6 +12,8 @@ const { detectAntigravityGit } = require('./antigravity-git.cjs');
 const npmUpdates = require('../../npm-updates.cjs');
 const { executeMigration } = require('./antigravity-migration.cjs');
 const { resolveAntigravityTitle } = require('./antigravity-title.cjs');
+const { readConfiguredLang, getUi } = require('../../i18n.cjs');
+const { getMessage } = require('../../progress-error.cjs');
 
 const DEFAULT_PORT = 29888;
 const DEFAULT_STATE_FILE = path.join(os.homedir(), '.gemini', 'antigravity', 'session-status', 'manual-state.json');
@@ -49,6 +51,11 @@ class AntigravityService {
         this.broadcastState(changedKey, statusInfo);
       },
     });
+  }
+
+  currentLang() {
+    if (typeof this.store?.lang === 'function') return this.store.lang();
+    return readConfiguredLang({ dataDir: this.stateFile ? path.dirname(this.stateFile) : undefined });
   }
 
   canonicalKey(convIdOrKey) {
@@ -92,10 +99,12 @@ class AntigravityService {
       }
     }
 
+    const lang = this.currentLang();
     return {
       key,
       conversationId: cleanId,
-      title: resolveAntigravityTitle(cleanId, { dbPath: this.dbPath, brainDir: this.brainDir }),
+      lang,
+      title: resolveAntigravityTitle(cleanId, { dbPath: this.dbPath, brainDir: this.brainDir, fallback: getUi(lang).t('defaultSessionTitle') }),
       progress,
       recordRevision: record?.revision ?? 0,
       savedAnalysis: analysis?.analysis || null,
@@ -136,7 +145,9 @@ class AntigravityService {
   }
 
   async handleRpc(message) {
-    if (!message || typeof message.requestId !== 'string') throw new Error('无效的请求');
+    const lang = this.currentLang();
+    const en = lang === 'en';
+    if (!message || typeof message.requestId !== 'string') throw new Error(en ? 'Invalid request' : '无效的请求');
     if (message.key) message.key = this.canonicalKey(message.key);
     let identity;
     try { identity = JSON.parse(message.key); } catch { identity = []; }
@@ -164,7 +175,9 @@ class AntigravityService {
         await this.updates.startUpdate();
         updateInfo = await this.updates.getUpdateInfo();
       } else if (message.type === 'update') {
-        if (message.record?.state === 'pushed' && !(await this.projectGit(message.key)).hasRemote) throw new Error('此项目尚未配置 Git 远端');
+        if (message.record?.state === 'pushed' && !(await this.projectGit(message.key)).hasRemote) {
+          throw new Error(en ? 'No Git remote configured for this project' : '此项目尚未配置 Git 远端');
+        }
         this.store.update(message);
         this.broadcastState(message.key);
       } else if (message.type === 'clear') {
@@ -174,7 +187,7 @@ class AntigravityService {
         const threadId = context.threadId;
         projectGit = threadId ? await detectAntigravityGit(threadId, { brainDir: this.brainDir, dbPath: this.dbPath }) : { status: 'checked', hasRepository: false, hasRemote: false };
       } else if (message.type === 'analysis-state') {
-        if (!this.store.validKey(message.key)) throw new Error('无效会话标识');
+        if (!this.store.validKey(message.key)) throw new Error(getMessage('INVALID_ARGUMENT', lang));
         analysisState = this.store.analysisState(message.key);
       } else if (message.type === 'analyze') {
         const { promise, runId, actionSequence } = this.analysisService.start(message.key, { requestId: message.requestId });
@@ -183,7 +196,7 @@ class AntigravityService {
         analysisState = this.store.analysisState(message.key);
         this.broadcastState(message.key);
       } else {
-        throw new Error(`未知操作：${message.type}`);
+        throw new Error(en ? `Unknown action: ${message.type}` : `未知操作：${message.type}`);
       }
     } catch (e) {
       error = e.message;
@@ -192,7 +205,8 @@ class AntigravityService {
     const reply = {
       requestId: message.requestId,
       error,
-      snapshot: this.store.snapshot(),
+      lang,
+      snapshot: { ...this.store.snapshot(), lang },
       analysisState,
       projectGit,
       updateInfo,
@@ -209,7 +223,9 @@ class AntigravityService {
   async start() {
     this.http = await startProgressHttp({ port: this.port, stateFile: this.stateFile,
       handle: async (method, route, body) => {
-        if (method === 'GET' && route === '/snapshot') return { snapshot: this.store.snapshot() };
+        const lang = this.currentLang();
+        const { t } = getUi(lang);
+        if (method === 'GET' && route === '/snapshot') return { snapshot: { ...this.store.snapshot(), lang } };
         if (method === 'GET' && route === '/session/snapshot') {
           const cleanId = (body?.conversationId || '').replace(/^local:/, '');
           return this.getSessionSnapshot(cleanId);
@@ -237,22 +253,23 @@ class AntigravityService {
             const progressData = this.store.getProgress(key);
             const isEmptySession = progressData == null;
             const stateText = isEmptySession
-              ? '尚未记录进展'
+              ? t('unrecordedSummary')
               : (progressData?.state === 'completed' || progressData?.progress === 100
-                ? '全部完成 (100%)'
-                : (progressData?.progress != null ? `${progressData.progress}%` : '未开始'));
+                ? t('mdStateDone')
+                : (progressData?.progress != null ? `${progressData.progress}%` : t('mdStateUnstarted')));
             const total = progressData?.totalTasks || 0;
             const done = progressData?.completedTasks || 0;
-            const tasksText = total > 0 ? `已完成 ${done} / ${total} 项任务` : '暂无任务清单';
-            const noteText = progressData?.note ? `\n- **会话备注**：${progressData.note}` : '';
-            const summaryText = isEmptySession ? '尚未记录进展' : (progressData?.summary || '');
+            const tasksText = total > 0 ? t('totalsPattern', { done, total }) : t('mdTasksEmpty');
+            const mdColon = lang === 'en' ? ': ' : '：';
+            const noteText = progressData?.note ? `\n- **${t('mdNotesLabel')}**${mdColon}${progressData.note}` : '';
+            const summaryText = isEmptySession ? t('unrecordedSummary') : (progressData?.summary || '');
 
             const { generateCardArtifact } = require('../../antigravity-card.cjs');
             const artifactDir = rawArgs.artifact_dir || path.join(os.homedir(), '.gemini/antigravity/brain', targetCleanId || 'default');
             const sessionTitle = resolveAntigravityTitle(targetCleanId, {
               dbPath: this.dbPath,
               brainDir: this.brainDir,
-              fallback: '当前会话',
+              fallback: t('defaultSessionTitle'),
             });
 
             const cardResult = generateCardArtifact({
@@ -272,9 +289,10 @@ class AntigravityService {
               stateFile: this.stateFile,
               connection: this.http?.credentials || null,
               title: sessionTitle,
+              lang,
             });
 
-            const userMarkdown = `${cardResult.embedTag}\n\n**当前会话任务进度：${stateText}**\n- **任务总览**：${tasksText}${noteText}\n- **快捷交互**：可在卡片中点击“手动调整”滑动调整进度或修改备注，或点击“更新进度”开始自动分析。`;
+            const userMarkdown = `${cardResult.embedTag}\n\n**${t('mdProgressHeading')}${mdColon}${stateText}**\n- **${t('mdTasksOverview')}**${mdColon}${tasksText}${noteText}\n- **${t('mdQuickActionsLabel')}**${mdColon}${t('mdQuickActionsText')}`;
 
             const cardPayload = {
               artifact_path: cardResult.path,
@@ -304,11 +322,11 @@ class AntigravityService {
             const server = this.makeServer();
             try { await server.initialize(); return await require('../../task-provenance.cjs').resolveTaskSources(server.request.bind(server), key, tasks); }
             finally { await server.close(); }
-          } });
+          }, lang });
           this.broadcastState(targetCleanId);
           return { result };
         }
-        throw new Error('未知服务路径');
+        throw new Error(lang === 'en' ? 'Unknown service route' : '未知服务路径');
       },
     });
     this.server = this.http.server;

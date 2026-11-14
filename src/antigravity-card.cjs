@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { readConfiguredLang, getUi } = require('./i18n.cjs');
 
 const colors = {
   unstarted: '#9098a2',
@@ -12,20 +13,9 @@ const colors = {
   pushed: '#a17be3',
 };
 
-const labels = {
-  unstarted: '尚未开始',
-  unfinished: '有遗留事项',
-  completed: '全部完成',
-  pushed: '全部完成并已推送',
-};
-
-const taskLabels = {
-  todo: '待开始',
-  in_progress: '进行中',
-  blocked: '受阻',
-  needs_verification: '待验收',
-  done: '已完成',
-};
+const defaultUi = getUi('zh');
+const labels = defaultUi.labels;
+const taskLabels = defaultUi.taskLabels;
 
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({
@@ -69,44 +59,52 @@ function renderSvgRing(progress, state, loading = false) {
 }
 
 function renderAntigravityCardHtml({
-  title = '当前会话',
+  title,
   conversationId = '',
   record = null,
   tasks = [],
   summary = '',
   revision = 0,
   connection = null,
+  lang = readConfiguredLang(),
 } = {}) {
+  const ui = getUi(lang);
+  const { t, labels: uiLabels, taskLabels: uiTaskLabels, strings: uiStrings } = ui;
+  const clientI18n = { ...uiStrings };
+  delete clientI18n.defaultDocTitle;
+  const resolvedTitle = title || t('defaultSessionTitle');
+  const htmlLang = ui.lang === 'en' ? 'en' : 'zh-CN';
   const state = record?.state || (record?.progress === 100 ? 'completed' : record?.progress > 0 ? 'unfinished' : 'unstarted');
   const progress = record?.progress ?? null;
   const note = record?.note || '';
   const stateColor = colors[state] || colors.unstarted;
-  const stateLabel = labels[state] || labels.unstarted;
-  const sourceLabel = record?.source === 'analysis' ? '自动分析' : '手动调整';
+  const stateLabel = uiLabels[state] || uiLabels.unstarted;
+  const sourceLabel = record?.source === 'analysis' ? t('sourceAuto') : t('sourceManual');
   const updatedDate = record?.updatedAt ? new Date(record.updatedAt) : new Date();
   const timestampStr = `${updatedDate.getMonth() + 1}/${updatedDate.getDate()} ${String(updatedDate.getHours()).padStart(2, '0')}:${String(updatedDate.getMinutes()).padStart(2, '0')}`;
 
   const allTasks = Array.isArray(tasks) ? tasks : [];
-  const uncompletedTasks = allTasks.filter(t => t.status !== 'done');
-  const completedTasks = allTasks.filter(t => t.status === 'done');
+  const uncompletedTasks = allTasks.filter(task => task.status !== 'done');
+  const completedTasks = allTasks.filter(task => task.status === 'done');
   const totalCount = allTasks.length;
   const doneCount = completedTasks.length;
-  const totalsText = totalCount > 0 ? `已完成 ${doneCount} / ${totalCount} 项任务` : '暂无任务统计';
+  const totalsText = totalCount > 0 ? t('totalsPattern', { done: doneCount, total: totalCount }) : t('noTasksYet');
   const summaryText = summary || record?.note || '';
 
   const configJson = JSON.stringify({
     origin: connection?.origin || 'http://127.0.0.1:29888',
     conversationId,
-    title,
+    title: resolvedTitle,
+    lang: ui.lang,
     loadToken: connection?.loadToken || null,
   });
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${htmlLang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(title)} · 任务进展</title>
+  <title>${escapeHtml(resolvedTitle)} · ${escapeHtml(t('docTitleSuffix'))}</title>
   <style>
     :root {
       --accent: #0169cc;
@@ -479,7 +477,7 @@ function renderAntigravityCardHtml({
     .actions {
       display: flex;
       align-items: center;
-      gap: 17px;
+      gap: 14px;
       margin: 12px 0 14px;
     }
     .primary {
@@ -491,6 +489,8 @@ function renderAntigravityCardHtml({
       font-weight: 550;
       min-height: 36px;
       font-size: 13px;
+      white-space: nowrap;
+      flex-shrink: 0;
       transition: background 0.15s ease;
     }
     .primary:hover {
@@ -503,6 +503,7 @@ function renderAntigravityCardHtml({
       padding: 0;
       color: var(--secondary);
       font-size: 12px;
+      white-space: nowrap;
       cursor: pointer;
       transition: color 0.12s ease;
     }
@@ -987,18 +988,18 @@ function renderAntigravityCardHtml({
 </head>
 <body>
   <div class="shell" id="agentThingsCard">
-    <button type="button" class="open-pane" id="btnOpenPane" aria-label="在侧栏打开" onclick="onOpenPaneClick()">
+    <button type="button" class="open-pane" id="btnOpenPane" aria-label="${escapeHtml(t('openInSidebar'))}" onclick="onOpenPaneClick()">
       <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
         <rect x="6.65" y="8.15" width="14.7" height="11.7" rx="3" stroke="currentColor" stroke-width="1.3"></rect>
         <path d="M16.3 8.2V19.8" stroke="currentColor" stroke-width="1.3"></path>
       </svg>
-      <span class="open-pane-tip" role="tooltip">在侧栏打开</span>
+      <span class="open-pane-tip" role="tooltip">${escapeHtml(t('openInSidebar'))}</span>
     </button>
     <div class="title-heading" tabindex="0">
       <span class="title-progress" id="titleProgress">
         ${renderSvgRing(progress, state)}
       </span>
-      <h2 class="title" id="cardTitle" title="${escapeHtml(title)}">${escapeHtml(title)}</h2>
+      <h2 class="title" id="cardTitle" title="${escapeHtml(resolvedTitle)}">${escapeHtml(resolvedTitle)}</h2>
     </div>
 
     <div class="panel-body" id="panelBody">
@@ -1028,43 +1029,44 @@ function renderAntigravityCardHtml({
         ${summaryText ? `
         <div class="summary-block" id="summaryBlock" tabindex="0">
           <div class="overview-summary" id="overviewSummary">${escapeHtml(summaryText)}</div>
-          <button class="summary-expand" id="summaryExpand" onclick="toggleSummaryExpand()" hidden>查看全部</button>
+          <button class="summary-expand" id="summaryExpand" onclick="toggleSummaryExpand()" hidden>${escapeHtml(t('expandAll'))}</button>
         </div>
         ` : ''}
 
         <div class="actions">
-          <button class="primary" id="btnAnalyze" onclick="onAnalyzeClick()">更新进度</button>
-          <button class="text-button" onclick="switchToEdit()">手动调整</button>
-          <button class="clear" aria-label="清除进度" onclick="onClearClick()">
-            <span class="clear-tooltip" role="tooltip">立即清除进度与任务记录</span>
-            清除进度
+          <button class="primary" id="btnAnalyze" onclick="onAnalyzeClick()">${escapeHtml(t('btnUpdate'))}</button>
+          <button class="text-button" onclick="switchToEdit()">${escapeHtml(t('btnAdjust'))}</button>
+          <button class="clear" aria-label="${escapeHtml(t('btnClear'))}" onclick="onClearClick()">
+            <span class="clear-tooltip" role="tooltip">${escapeHtml(t('clearTooltip'))}</span>
+            ${escapeHtml(t('btnClear'))}
           </button>
         </div>
 
         <!-- Section Head -->
         <div class="section-head">
-          <h3 id="remainingTasksHeading">剩余任务 ${uncompletedTasks.length}</h3>
+          <h3 id="remainingTasksHeading">${escapeHtml(t('remainingHeadingPattern', { count: uncompletedTasks.length }))}</h3>
           ${uncompletedTasks.length > 3 ? `
-            <button class="text-button row-detail" id="btnToggleAllRemaining" onclick="toggleAllRemaining()">查看全部 ${uncompletedTasks.length} 条 ›</button>
+            <button class="text-button row-detail" id="btnToggleAllRemaining" onclick="toggleAllRemaining()">${escapeHtml(t('showAllCountPattern', { count: uncompletedTasks.length }))}</button>
           ` : ''}
         </div>
 
         <!-- Tasks list -->
         <div class="tasks-list" id="uncompletedTasksList">
-          ${allTasks.length === 0 ? '<div class="empty">点击更新进度，整理这次会话的任务</div>'
-            : uncompletedTasks.length === 0 ? '<div class="empty">暂无未完成任务</div>' : ''}
+          ${allTasks.length === 0 ? `<div class="empty">${escapeHtml(t('emptyNoTasks'))}</div>`
+            : uncompletedTasks.length === 0 ? `<div class="empty">${escapeHtml(t('emptyNoRemaining'))}</div>` : ''}
           ${uncompletedTasks.map((task, idx) => {
             const hasSource = Boolean(task.source?.locator || task.source?.turnId);
+            const taskTitle = task.title || task.summary || t('untitledTask');
             return `
             <div class="task-row ${idx >= 3 ? 'remaining-hidden' : ''}" data-status="${escapeHtml(task.status)}" tabindex="0" ${idx >= 3 ? 'hidden' : ''}>
               <span class="task-dot"></span>
               <div class="task-content">
-                <div class="task-title">${escapeHtml(task.title || task.summary || '未命名事项')}</div>
-                <div class="task-meta">${escapeHtml(taskLabels[task.status] || task.status)}</div>
+                <div class="task-title">${escapeHtml(taskTitle)}</div>
+                <div class="task-meta">${escapeHtml(uiTaskLabels[task.status] || task.status)}</div>
               </div>
               ${hasSource ? `
                 <div class="task-source">
-                  <button type="button" aria-label="查看来源：${escapeHtml(task.title || task.summary || '未命名事项')}" data-source="${escapeHtml(JSON.stringify(task.source))}" onclick="onSourceClick(this)">查看来源</button>
+                  <button type="button" aria-label="${escapeHtml(t('viewSourceAriaPrefix') + taskTitle)}" data-source="${escapeHtml(JSON.stringify(task.source))}" onclick="onSourceClick(this)">${escapeHtml(t('viewSource'))}</button>
                 </div>
               ` : ''}
             </div>
@@ -1075,12 +1077,12 @@ function renderAntigravityCardHtml({
         <!-- Bottom Rows (1:1 identical to sidebar) -->
         <div class="overview-bottom">
           <button class="quiet-row history-open" onclick="switchToHistory()">
-            <span>已完成任务</span>
-            <span class="row-detail" id="historyCount">${completedTasks.length} 条 ›</span>
+            <span>${escapeHtml(t('completedHeading'))}</span>
+            <span class="row-detail" id="historyCount">${escapeHtml(t('countArrowPattern', { count: completedTasks.length }))}</span>
           </button>
           <button class="quiet-row note-open" onclick="switchToEditNote()">
-            <span>备注</span>
-            <span class="row-detail" id="noteOpenLabel">${note ? '编辑' : '添加'}</span>
+            <span>${escapeHtml(t('notesLabel'))}</span>
+            <span class="row-detail" id="noteOpenLabel">${escapeHtml(note ? t('editLabel') : t('addLabel'))}</span>
           </button>
         </div>
       </div>
@@ -1088,23 +1090,24 @@ function renderAntigravityCardHtml({
       <!-- History View -->
       <div id="historyView" class="view history-view" hidden>
         <div class="view-heading">
-          <h3>已完成任务</h3>
-          <button class="back" onclick="switchToOverview()">‹ 返回</button>
+          <h3>${escapeHtml(t('completedHeading'))}</h3>
+          <button class="back" onclick="switchToOverview()">${escapeHtml(t('backLabel'))}</button>
         </div>
         <div class="history-list" id="historyList">
-          ${completedTasks.length === 0 ? '<div class="empty">暂无已完成任务</div>' : ''}
+          ${completedTasks.length === 0 ? `<div class="empty">${escapeHtml(t('emptyCompleted'))}</div>` : ''}
           ${completedTasks.map((task) => {
             const hasSource = Boolean(task.source?.locator || task.source?.turnId);
+            const taskTitle = task.title || task.summary || t('completedTaskFallback');
             return `
             <div class="task-row" data-status="done" tabindex="0">
               <span class="task-dot"></span>
               <div class="task-content">
-                <div class="task-title">${escapeHtml(task.title || task.summary || '已完成事项')}</div>
-                <div class="task-meta">已完成</div>
+                <div class="task-title">${escapeHtml(taskTitle)}</div>
+                <div class="task-meta">${escapeHtml(uiTaskLabels.done)}</div>
               </div>
               ${hasSource ? `
                 <div class="task-source">
-                  <button type="button" aria-label="查看来源：${escapeHtml(task.title || task.summary || '已完成事项')}" data-source="${escapeHtml(JSON.stringify(task.source))}" onclick="onSourceClick(this)">查看来源</button>
+                  <button type="button" aria-label="${escapeHtml(t('viewSourceAriaPrefix') + taskTitle)}" data-source="${escapeHtml(JSON.stringify(task.source))}" onclick="onSourceClick(this)">${escapeHtml(t('viewSource'))}</button>
                 </div>
               ` : ''}
             </div>
@@ -1116,11 +1119,11 @@ function renderAntigravityCardHtml({
       <!-- Edit View -->
       <div id="editView" class="view edit-view" hidden>
         <div class="view-heading">
-          <h3>手动记录会话状态</h3>
-          <button class="back" onclick="switchToOverview()">‹ 返回</button>
+          <h3>${escapeHtml(t('editHeading'))}</h3>
+          <button class="back" onclick="switchToOverview()">${escapeHtml(t('backLabel'))}</button>
         </div>
         <div class="choices-list">
-          ${Object.entries(labels).map(([key, label]) => `
+          ${Object.entries(uiLabels).map(([key, label]) => `
             <button class="choice" id="choice-${key}" ${key === 'pushed' ? 'hidden' : ''} aria-pressed="${state === key ? 'true' : 'false'}" style="--mark:${colors[key]}" onclick="selectState('${key}')">
               <span class="dot"></span>
               <span>${escapeHtml(label)}</span>
@@ -1130,9 +1133,9 @@ function renderAntigravityCardHtml({
 
         <div class="progress-section">
           <div class="progress-head">
-            <label class="label" for="inputProgressNumber">进度</label>
+            <label class="label" for="inputProgressNumber">${escapeHtml(t('progressLabel'))}</label>
             <div class="number-wrap">
-              <input type="number" id="inputProgressNumber" class="progress-number" min="0" max="100" step="1" value="${progress != null ? progress : ''}" placeholder="—" aria-label="手动进度" oninput="onNumberInput(this.value)" onkeydown="onProgressKeyDown(event)">
+              <input type="number" id="inputProgressNumber" class="progress-number" min="0" max="100" step="1" value="${progress != null ? progress : ''}" placeholder="—" aria-label="${escapeHtml(t('progressLabel'))}" oninput="onNumberInput(this.value)" onkeydown="onProgressKeyDown(event)">
               <span>%</span>
             </div>
           </div>
@@ -1146,27 +1149,27 @@ function renderAntigravityCardHtml({
                 </span>
               `).join('')}
             </div>
-            <input type="range" id="inputSlider" class="range-input" min="0" max="100" step="1" value="${progress != null ? progress : 0}" aria-label="拖动调整进度" onpointerdown="onSliderPointerDown()" onpointerup="onSliderPointerUp()" onpointercancel="onSliderPointerUp()" oninput="onSliderInput(this.value)">
+            <input type="range" id="inputSlider" class="range-input" min="0" max="100" step="1" value="${progress != null ? progress : 0}" aria-label="${escapeHtml(t('sliderAriaLabel'))}" onpointerdown="onSliderPointerDown()" onpointerup="onSliderPointerUp()" onpointercancel="onSliderPointerUp()" oninput="onSliderInput(this.value)">
           </div>
 
           <div class="unknown-row">
-            <button type="button" class="unknown" onclick="onClearProgressClick()">清空进度</button>
+            <button type="button" class="unknown" onclick="onClearProgressClick()">${escapeHtml(t('clearValueBtn'))}</button>
           </div>
         </div>
 
-        <label class="note-label" for="txtNote">备注</label>
-        <textarea id="txtNote" class="note-input" maxlength="4000" placeholder="记下下一步要做的事…" aria-label="事项备注" oninput="markFormDirty()">${escapeHtml(note)}</textarea>
+        <label class="note-label" for="txtNote">${escapeHtml(t('notesLabel'))}</label>
+        <textarea id="txtNote" class="note-input" maxlength="4000" placeholder="${escapeHtml(t('notePlaceholder'))}" aria-label="${escapeHtml(t('noteAriaLabel'))}" oninput="markFormDirty()">${escapeHtml(note)}</textarea>
 
         <div id="conflictBox" class="conflict-box" style="display:none; margin: 10px 0; padding: 8px 12px; background: rgba(230, 80, 80, 0.12); border: 1px solid rgba(230, 80, 80, 0.35); border-radius: 6px; font-size: 12px; line-height: 1.5; color: var(--ink);">
-          <div id="conflictMsg">保存冲突：内容已被其他入口修改。当前草稿已保留。</div>
+          <div id="conflictMsg">${escapeHtml(t('conflictBanner'))}</div>
           <div style="margin-top: 6px;">
-            <button type="button" class="text-button" id="btnResolveConflict" style="color: var(--mark); text-decoration: underline; padding: 0;" onclick="resolveConflictKeepDraft()">读取最新版本并保留草稿</button>
+            <button type="button" class="text-button" id="btnResolveConflict" style="color: var(--mark); text-decoration: underline; padding: 0;" onclick="resolveConflictKeepDraft()">${escapeHtml(t('resolveConflictBtn'))}</button>
           </div>
         </div>
 
         <div class="edit-actions">
-          <button class="text-button" onclick="switchToOverview()">取消</button>
-          <button class="primary" id="btnSaveRecord" onclick="onSaveRecord()">保存记录</button>
+          <button class="text-button" onclick="switchToOverview()">${escapeHtml(t('cancelBtn'))}</button>
+          <button class="primary" id="btnSaveRecord" onclick="onSaveRecord()">${escapeHtml(t('saveBtn'))}</button>
         </div>
       </div>
     </div>
@@ -1176,8 +1179,19 @@ function renderAntigravityCardHtml({
 
   <script>
     const colors = ${JSON.stringify(colors)};
-    const labels = ${JSON.stringify(labels)};
-    const taskLabels = ${JSON.stringify(taskLabels)};
+    const i18n = ${JSON.stringify(clientI18n)};
+    const labels = i18n.labels || {};
+    const taskLabels = i18n.taskLabels || {};
+    const fmt = (key, vars = {}) => String(i18n[key] ?? key).replace(/\\{(\\w+)\\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : ''));
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      }[c]));
+    }
     const conversationId = ${JSON.stringify(conversationId)};
     const connection = ${configJson};
     let currentRevision = ${Number(revision) || 0};
@@ -1200,10 +1214,10 @@ function renderAntigravityCardHtml({
       const box = document.getElementById('conflictBox');
       const text = document.getElementById('conflictMsg');
       if (box && text) {
-        text.textContent = msg || '保存冲突：内容已被其他入口修改。当前草稿已保留。';
+        text.textContent = msg || i18n.conflictBanner;
         box.style.display = 'block';
       }
-      showFeedback('保存失败：检测到版本冲突', true);
+      showFeedback(i18n.conflictDetectedFeedback, true);
     }
 
     function hideConflictNotice() {
@@ -1214,7 +1228,7 @@ function renderAntigravityCardHtml({
     function resolveConflictKeepDraft() {
       draftBaseRevision = savedRevision;
       hideConflictNotice();
-      showFeedback('基准版本已对齐最新状态，再次点击保存即可提交当前草稿。');
+      showFeedback(i18n.conflictRebasedFeedback);
     }
 
     function switchToEdit() {
@@ -1343,7 +1357,7 @@ function renderAntigravityCardHtml({
       if (btn) {
         btn.setAttribute('data-expanded', String(!isExpanded));
         const total = hiddenRows.length + 3;
-        btn.textContent = isExpanded ? ('查看全部 ' + total + ' 条 ›') : '收起 ›';
+        btn.textContent = isExpanded ? fmt('showAllCountPattern', { count: total }) : i18n.collapseArrow;
       }
     }
 
@@ -1352,7 +1366,7 @@ function renderAntigravityCardHtml({
       const btn = document.getElementById('summaryExpand');
       if (!block || !btn) return;
       const isExpanded = block.classList.toggle('expanded');
-      btn.textContent = isExpanded ? '收起' : '查看全部';
+      btn.textContent = isExpanded ? i18n.collapse : i18n.expandAll;
     }
 
     function checkSummaryOverflow() {
@@ -1366,13 +1380,13 @@ function renderAntigravityCardHtml({
     function postWindowLocateRequest(source, { timeoutMs = 15000 } = {}) {
       return new Promise((resolve, reject) => {
         if (!window.parent || window.parent === window) {
-          reject(new Error('当前环境不支持跳转来源'));
+          reject(new Error(i18n.locateUnsupported));
           return;
         }
         const nonce = 'loc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
         const timer = setTimeout(() => {
           pendingActions.delete(nonce);
-          reject(new Error('定位来源超时，请在原会话中确认历史消息'));
+          reject(new Error(i18n.locateTimeout));
         }, timeoutMs);
         pendingActions.set(nonce, { resolve, reject, timer });
         try {
@@ -1396,18 +1410,18 @@ function renderAntigravityCardHtml({
         const sourceJson = button.getAttribute('data-source');
         if (!sourceJson) return;
         const source = JSON.parse(sourceJson);
-        showFeedback('正在跳转到来源消息…');
+        showFeedback(i18n.locatingSourceMessage);
 
         const result = hostChannelPort
           ? await postHostChannelRequest({
               type: 'AGENT_THINGS_LOCATE',
               source,
-            }, { timeoutMs: 18000, errorLabel: '跳转来源消息超时' })
+            }, { timeoutMs: 18000, errorLabel: i18n.locateTimeout })
           : await postWindowLocateRequest(source);
 
-        showFeedback(result?.message || '已跳转到会话来源');
+        showFeedback(result?.message || i18n.locatedJumpMessage);
       } catch (err) {
-        showFeedback('跳转失败：' + (err.message || '未知错误'), true);
+        showFeedback(i18n.locateCommandErrorPrefix + (err.message || i18n.unknownActionError), true);
       } finally {
         if (button) button.disabled = false;
       }
@@ -1432,10 +1446,10 @@ function renderAntigravityCardHtml({
     let serviceOrigin = connection?.origin || null;
     const pendingActions = new Map();
 
-    function postHostChannelRequest(message, { timeoutMs = 12000, errorLabel = '宿主桥响应超时' } = {}) {
+    function postHostChannelRequest(message, { timeoutMs = 12000, errorLabel = i18n.cardTimeout } = {}) {
       return new Promise((resolve, reject) => {
         if (!hostChannelPort) {
-          reject(new Error('未建立安全宿主端口通道，无法执行操作'));
+          reject(new Error(i18n.locateHostDisconnected));
           return;
         }
         const nonce = 'req-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
@@ -1493,7 +1507,7 @@ function renderAntigravityCardHtml({
           try {
             await postHostChannelRequest({
               type: 'AGENT_THINGS_OPEN_PANE',
-            }, { timeoutMs: 4500, errorLabel: '打开侧栏响应超时' });
+            }, { timeoutMs: 4500, errorLabel: i18n.cardRequestTimeout });
             return;
           } catch (err) {
             if (err && err.isHostBusinessError) {
@@ -1512,12 +1526,12 @@ function renderAntigravityCardHtml({
         if (hostChannelPort) {
           await postHostChannelRequest({
             type: 'AGENT_THINGS_OPEN_PANE',
-          }, { timeoutMs: 4500, errorLabel: '打开侧栏响应超时' });
+          }, { timeoutMs: 4500, errorLabel: i18n.cardRequestTimeout });
           return;
         }
-        throw new Error('当前环境不支持在侧栏打开');
+        throw new Error(i18n.locateUnsupported);
       } catch (err) {
-        showFeedback('打开侧栏失败: ' + (err?.message || '未知错误'), true);
+        showFeedback(i18n.openPaneFailedPrefix + (err?.message || i18n.unknownActionError), true);
       } finally {
         if (btn) btn.disabled = false;
       }
@@ -1547,7 +1561,7 @@ function renderAntigravityCardHtml({
           if (actionOk) {
             req.resolve(data.data || (data.message ? { message: data.message } : {}));
           } else {
-            const err = new Error(data.error || data.message || '操作失败');
+            const err = new Error(data.error || data.message || i18n.cardOpFailed);
             err.isHostBusinessError = true;
             req.reject(err);
           }
@@ -1565,7 +1579,7 @@ function renderAntigravityCardHtml({
             try { hostChannelPort.close(); } catch (_) {}
             hostChannelPort = null;
           }
-          reject(new Error('申请订阅票据超时'));
+          reject(new Error(i18n.cardTimeout));
         }, 8000);
 
         pendingActions.set(nonce, { resolve, reject, timer });
@@ -1600,7 +1614,7 @@ function renderAntigravityCardHtml({
           } else {
             clearTimeout(timer);
             pendingActions.delete(nonce);
-            reject(new Error('宿主不支持 MessageChannel 安全端口通信'));
+            reject(new Error(i18n.cardAuthUnavailable));
             return;
           }
         } catch (err) {
@@ -1622,7 +1636,7 @@ function renderAntigravityCardHtml({
       const noteVal = document.getElementById('txtNote')?.value ?? '';
       try {
         if (btn) btn.disabled = true;
-        showFeedback('正在保存…');
+        showFeedback(i18n.savingFeedback);
         const reply = await sendProxyAction('update', {
           expectedRevision: draftBaseRevision,
           record: {
@@ -1640,14 +1654,14 @@ function renderAntigravityCardHtml({
         }
         isFormDirty = false;
         hideConflictNotice();
-        showFeedback('✓ 保存成功');
+        showFeedback(i18n.savedFeedback);
         setTimeout(switchToOverview, 600);
       } catch (err) {
-        const isConflict = err.message && (err.message.includes('其他窗口更新') || err.message.includes('版本已被') || err.message.includes('409') || err.message.includes('conflict') || err.message.includes('revision mismatch'));
+        const isConflict = err.message && (err.message.includes('其他窗口更新') || err.message.includes('another window') || err.message.includes('版本已被') || err.message.includes('409') || err.message.includes('conflict') || err.message.includes('revision mismatch'));
         if (isConflict) {
-          showConflictNotice('保存冲突：内容已被其他入口修改。当前草稿已保留。');
+          showConflictNotice(i18n.conflictBanner);
         } else {
-          showFeedback('保存失败: ' + err.message, true);
+          showFeedback(i18n.saveFailedPrefix + err.message, true);
         }
       } finally {
         if (btn) btn.disabled = false;
@@ -1655,9 +1669,9 @@ function renderAntigravityCardHtml({
     }
 
     async function onClearClick() {
-      if (!confirm('确定要清除本会话的任务进度和记录吗？')) return;
+      if (!confirm(i18n.clearConfirm)) return;
       try {
-        showFeedback('正在清除…');
+        showFeedback(i18n.clearingFeedback);
         const reply = await sendProxyAction('clear', {
           expectedRevision: draftBaseRevision,
         });
@@ -1669,9 +1683,9 @@ function renderAntigravityCardHtml({
         }
         isFormDirty = false;
         hideConflictNotice();
-        showFeedback('✓ 已清空进度');
+        showFeedback(i18n.clearedFeedback);
       } catch (err) {
-        showFeedback('清除失败: ' + err.message, true);
+        showFeedback(i18n.clearFailedPrefix + err.message, true);
       }
     }
 
@@ -1701,12 +1715,12 @@ function renderAntigravityCardHtml({
       if (btnAnalyze) {
         if (analyzing) {
           btnAnalyze.disabled = true;
-          btnAnalyze.textContent = '正在分析…';
+          btnAnalyze.textContent = i18n.btnUpdating;
         } else {
           btnAnalyze.disabled = false;
-          btnAnalyze.textContent = '更新进度';
+          btnAnalyze.textContent = i18n.btnUpdate;
           if (analysisStatus?.status === 'failed') {
-            showFeedback('分析未完成: ' + (analysisStatus.error || '执行异常'), true);
+            showFeedback(i18n.analysisNotDonePrefix + (analysisStatus.error || i18n.analysisAbnormal), true);
           }
         }
       }
@@ -1739,10 +1753,10 @@ function renderAntigravityCardHtml({
         const noteInput = document.getElementById('txtNote');
         if (noteInput) noteInput.value = data.note || '';
         const noteOpenLabel = document.getElementById('noteOpenLabel');
-        if (noteOpenLabel) noteOpenLabel.textContent = data.note ? '编辑' : '添加';
+        if (noteOpenLabel) noteOpenLabel.textContent = data.note ? i18n.editLabel : i18n.addLabel;
       }
 
-      if (data.title && data.title !== '当前会话') {
+      if (data.title && data.title !== '当前会话' && data.title !== 'Current session') {
         const titleEl = document.getElementById('cardTitle');
         if (titleEl) {
           titleEl.textContent = data.title;
@@ -1774,7 +1788,7 @@ function renderAntigravityCardHtml({
       const doneCount = data.completedTasks ?? data.tasks?.filter(function(t) { return t.status === 'done'; }).length ?? 0;
       const totalsEl = document.getElementById('overviewTotals');
       if (totalsEl) {
-        totalsEl.textContent = totalCount > 0 ? ('已完成 ' + doneCount + ' / ' + totalCount + ' 项任务') : '暂无任务统计';
+        totalsEl.textContent = totalCount > 0 ? fmt('totalsPattern', { done: doneCount, total: totalCount }) : i18n.noTasksYet;
       }
 
       const summaryText = data.summary || data.note || '';
@@ -1816,37 +1830,37 @@ function renderAntigravityCardHtml({
         const completed = data.tasks.filter(function(t) { return t.status === 'done'; });
 
         const remainingHeading = document.getElementById('remainingTasksHeading');
-        if (remainingHeading) remainingHeading.textContent = '剩余任务 ' + remaining.length;
+        if (remainingHeading) remainingHeading.textContent = fmt('remainingHeadingPattern', { count: remaining.length });
 
         const toggleBtn = document.getElementById('btnToggleAllRemaining');
         if (toggleBtn) {
           toggleBtn.hidden = remaining.length <= 3;
-          toggleBtn.textContent = '查看全部 ' + remaining.length + ' 条 ›';
+          toggleBtn.textContent = fmt('showAllCountPattern', { count: remaining.length });
           toggleBtn.setAttribute('data-expanded', 'false');
         }
 
         const historyCount = document.getElementById('historyCount');
-        if (historyCount) historyCount.textContent = completed.length + ' 条 ›';
+        if (historyCount) historyCount.textContent = fmt('countArrowPattern', { count: completed.length });
 
         const uncompletedList = document.getElementById('uncompletedTasksList');
         if (uncompletedList) {
           let html = '';
           if (data.tasks.length === 0) {
-            html = '<div class="empty">点击更新进度，整理这次会话的任务</div>';
+            html = '<div class="empty">' + escapeHtml(i18n.emptyNoTasks) + '</div>';
           } else if (remaining.length === 0) {
-            html = '<div class="empty">暂无未完成任务</div>';
+            html = '<div class="empty">' + escapeHtml(i18n.emptyNoRemaining) + '</div>';
           }
           html += remaining.map(function(task, idx) {
             const hasSource = Boolean(task.source && (task.source.locator || task.source.turnId));
             const badge = taskLabels[task.status] || task.status;
-            const titleText = task.title || task.summary || '未命名事项';
+            const titleText = task.title || task.summary || i18n.untitledTask;
             return '<div class="task-row ' + (idx >= 3 ? 'remaining-hidden' : '') + '" data-status="' + escapeHtml(task.status) + '" tabindex="0" ' + (idx >= 3 ? 'hidden' : '') + '>' +
               '<span class="task-dot"></span>' +
               '<div class="task-content">' +
                 '<div class="task-title">' + escapeHtml(titleText) + '</div>' +
                 '<div class="task-meta">' + escapeHtml(badge) + '</div>' +
               '</div>' +
-              (hasSource ? '<div class="task-source"><button type="button" aria-label="' + escapeHtml('查看来源：' + titleText) + '" data-source="' + escapeHtml(JSON.stringify(task.source)) + '" onclick="onSourceClick(this)">查看来源</button></div>' : '') +
+              (hasSource ? '<div class="task-source"><button type="button" aria-label="' + escapeHtml(i18n.viewSourceAriaPrefix + titleText) + '" data-source="' + escapeHtml(JSON.stringify(task.source)) + '" onclick="onSourceClick(this)">' + escapeHtml(i18n.viewSource) + '</button></div>' : '') +
             '</div>';
           }).join('');
           uncompletedList.innerHTML = html;
@@ -1856,18 +1870,18 @@ function renderAntigravityCardHtml({
         if (historyList) {
           let html = '';
           if (completed.length === 0) {
-            html = '<div class="empty">暂无已完成任务</div>';
+            html = '<div class="empty">' + escapeHtml(i18n.emptyCompleted) + '</div>';
           }
           html += completed.map(function(task) {
             const hasSource = Boolean(task.source && (task.source.locator || task.source.turnId));
-            const titleText = task.title || task.summary || '已完成事项';
+            const titleText = task.title || task.summary || i18n.completedTaskFallback;
             return '<div class="task-row" data-status="done" tabindex="0">' +
               '<span class="task-dot"></span>' +
               '<div class="task-content">' +
                 '<div class="task-title">' + escapeHtml(titleText) + '</div>' +
-                '<div class="task-meta">已完成</div>' +
+                '<div class="task-meta">' + escapeHtml(taskLabels.done || 'done') + '</div>' +
               '</div>' +
-              (hasSource ? '<div class="task-source"><button type="button" aria-label="' + escapeHtml('查看来源：' + titleText) + '" data-source="' + escapeHtml(JSON.stringify(task.source)) + '" onclick="onSourceClick(this)">查看来源</button></div>' : '') +
+              (hasSource ? '<div class="task-source"><button type="button" aria-label="' + escapeHtml(i18n.viewSourceAriaPrefix + titleText) + '" data-source="' + escapeHtml(JSON.stringify(task.source)) + '" onclick="onSourceClick(this)">' + escapeHtml(i18n.viewSource) + '</button></div>' : '') +
             '</div>';
           }).join('');
           historyList.innerHTML = html;
@@ -1892,15 +1906,15 @@ function renderAntigravityCardHtml({
       try {
         if (btn) {
           btn.disabled = true;
-          btn.textContent = '正在分析…';
+          btn.textContent = i18n.btnUpdating;
         }
-        showFeedback('正在开始分析…');
+        showFeedback(i18n.startingAnalysisFeedback);
         await sendProxyAction('analyze', {});
       } catch (err) {
-        showFeedback('更新失败: ' + err.message, true);
+        showFeedback(i18n.updateFailedPrefix + err.message, true);
         if (btn) {
           btn.disabled = false;
-          btn.textContent = '更新进度';
+          btn.textContent = i18n.btnUpdate;
         }
       }
     }
@@ -2012,7 +2026,9 @@ function generateCardArtifact({
   stateFile,
   loadToken = null,
   connection: passedConnection = null,
+  lang,
 }) {
+  const resolvedLang = lang || readConfiguredLang({ dataDir: stateFile ? path.dirname(stateFile) : undefined });
   const dir = brainDir || artifactDir || path.join(os.homedir(), '.gemini', 'antigravity', 'brain', conversationId);
   fs.mkdirSync(dir, { recursive: true });
   const htmlPath = path.join(dir, 'things-card.html');
@@ -2027,6 +2043,7 @@ function generateCardArtifact({
     summary,
     revision,
     connection,
+    lang: resolvedLang,
   });
   fs.writeFileSync(htmlPath, html, 'utf8');
   return {

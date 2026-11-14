@@ -5,11 +5,18 @@ const { AntigravityInjector } = require('../src/harnesses/antigravity/antigravit
 const { requestProgressHttp } = require('../src/local-progress-http.cjs');
 const { assertIntegrationEnabled } = require('../src/cli/integration-state.cjs');
 const { serveMcp } = require('../src/mcp-stdio.cjs');
+const { readConfiguredLang } = require('../src/i18n.cjs');
 
 async function main() {
   const args = process.argv.slice(2);
-  if (args.some(arg => !['--daemon', '--no-ui', '--help', '-h', 'help'].includes(arg))) throw new Error('未知 Antigravity 服务选项');
-  if (args.some(arg => ['--help', '-h', 'help'].includes(arg))) { console.log('用法：antigravity-session-status [--daemon] [--no-ui]；Agent Things (Antigravity) 后台与 MCP stdio 服务。'); return; }
+  const en = readConfiguredLang() === 'en';
+  if (args.some(arg => !['--daemon', '--no-ui', '--help', '-h', 'help'].includes(arg))) throw new Error(en ? 'Unknown Antigravity service option' : '未知 Antigravity 服务选项');
+  if (args.some(arg => ['--help', '-h', 'help'].includes(arg))) {
+    console.log(en
+      ? 'Usage: antigravity-session-status [--daemon] [--no-ui]; Agent Things (Antigravity) daemon and MCP stdio service.'
+      : '用法：antigravity-session-status [--daemon] [--no-ui]；Agent Things (Antigravity) 后台与 MCP stdio 服务。');
+    return;
+  }
   const isDaemon = process.argv.includes('--daemon');
   const port = Number(process.env.SESSION_STATUS_PORT ?? DEFAULT_PORT);
   const stateFile = process.env.SESSION_STATUS_STATE_FILE || DEFAULT_STATE_FILE;
@@ -57,21 +64,26 @@ async function main() {
     stopping = true; clearInterval(timer); await injector?.stop();
     if (service) await service.stop();
   };
-  const antigravityTools = [
-    {
-      name: 'render_things_card',
-      description: '在当前 Antigravity 会话生成并返回 Agent Things 任务进度信息流卡片工件与内嵌标签。一步完成读取、卡片工件生成与回复文本。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          conversation_id: { type: 'string', minLength: 1, description: '当前会话的 Conversation ID' },
-          artifact_dir: { type: 'string', description: '工件目录路径（可选）' },
+  const antigravityTools = toolLang => {
+    const isEn = toolLang === 'en';
+    return [
+      {
+        name: 'render_things_card',
+        description: isEn
+          ? 'Generate and return the inline Agent Things session progress card artifact and embed tag for the current Antigravity conversation in one step.'
+          : '在当前 Antigravity 会话生成并返回 Agent Things 任务进度信息流卡片工件与内嵌标签。一步完成读取、卡片工件生成与回复文本。',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            conversation_id: { type: 'string', minLength: 1, description: isEn ? 'Conversation ID of the current session' : '当前会话的 Conversation ID' },
+            artifact_dir: { type: 'string', description: isEn ? 'Artifact directory path (optional)' : '工件目录路径（可选）' },
+          },
+          required: ['conversation_id'],
+          additionalProperties: false,
         },
-        required: ['conversation_id'],
-        additionalProperties: false,
       },
-    },
-  ];
+    ];
+  };
 
   if (!isDaemon) serveMcp({ name: 'antigravity-session-status', extraTools: antigravityTools, callTool: async (name, args) => {
     await ensureService();

@@ -1,6 +1,6 @@
 {
   "name": "agent-things",
-  "version": "1.1.1",
+  "version": "1.2.1",
   "description": "Session task progress and checklists for ChatGPT, Antigravity and Claude Desktop on macOS.",
   "license": "MIT",
   "author": "snuffpic",
@@ -25,7 +25,7 @@
     "darwin"
   ],
   "scripts": {
-    "test": "SESSION_STATUS_PORT=0 node --test --test-timeout=60000 test/*.test.cjs",
+    "test": "SESSION_STATUS_PORT=0 SESSION_STATUS_CONFIG=/tmp/agent-things-test-isolated-config.json node --test --test-timeout=60000 test/*.test.cjs",
     "build:bundles": "node scripts/build-shared-ui.cjs && node scripts/build-antigravity-bundle.cjs && node scripts/build-codex-bundle.cjs",
     "build:bridge": "node scripts/build-native-bridge.cjs",
     "prepack": "npm run build:bridge && npm run build:bundles",
@@ -33,7 +33,7 @@
     "mcp:antigravity": "node bin/antigravity-session-status.cjs",
     "check:syntax": "node scripts/check.cjs",
     "check:package": "node scripts/check-package.cjs",
-    "check:browser": "AGENT_THINGS_CHECK_HOST=codex node scripts/check-session-status.cjs",
+    "check:browser": "SESSION_STATUS_CONFIG=/tmp/agent-things-test-isolated-config.json AGENT_THINGS_CHECK_HOST=codex node scripts/check-session-status.cjs",
     "verify": "npm run check:syntax && npm run build:bridge && npm run build:bundles && git diff --exit-code -- outputs/ mods/agent-things-ui/hooks/foundation.js && npm test && npm run check:browser && npm run check:package"
   },
   "keywords": [

@@ -1,8 +1,11 @@
 'use strict';
+const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { errorDetails } = require('./progress-error.cjs');
+const { readConfiguredLang } = require('./i18n.cjs');
 const PROTOCOL_VERSION = 1;
-function sessionView(store, key, { projectGit, capabilities = {}, projection = null } = {}) {
+function sessionView(store, key, { projectGit, capabilities = {}, projection = null, lang } = {}) {
+  const activeLang = lang || (typeof store.lang === 'function' ? store.lang() : readConfiguredLang({ dataDir: store.file ? path.dirname(store.file) : undefined }));
   let saved, analysisObj, event, tasks, git, versionInput;
   if (projection || typeof store.readSessionProjection === 'function') {
     const view = projection || store.readSessionProjection(key);
@@ -23,7 +26,7 @@ function sessionView(store, key, { projectGit, capabilities = {}, projection = n
   }
   const record = saved?.state ? saved : null;
   const analysis = { status: event?.status || 'idle', stage: event?.stage || null, runId: event?.actionSequence ?? null,
-    error: event?.status === 'failed' ? errorDetails({ code: event.errorCode }, 'ANALYSIS_FAILED') : null };
+    error: event?.status === 'failed' ? errorDetails({ code: event.errorCode }, 'ANALYSIS_FAILED', activeLang) : null };
   const sessionVersion = createHash('sha256').update(versionInput).digest('hex');
   return { schemaVersion: PROTOCOL_VERSION, key, sessionVersion, recordRevision: saved?.revision ?? 0, record, tasks, analysis,
     projectGit: git, capabilities: { read: true, save: true, clear: true, analyze: JSON.parse(key)[0] === 'local', watch: true, locate: false, update: true, ...capabilities } };

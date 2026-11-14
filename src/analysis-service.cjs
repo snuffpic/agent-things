@@ -9,18 +9,22 @@ const { mergeAnalysis } = require('./analysis-ledger.cjs');
 const { readProjectGit } = require('./analysis-git.cjs');
 const { assertUpdateIdle } = require('./npm-updates.cjs');
 
-const { nextBatch, measureRequest, splitAdaptiveBatches, FULL_PASS_MAX_BYTES, FULL_PASS_TOKEN_BUDGET } = require('./analysis-budget.cjs');
+const { nextBatch, measureRequest, splitAdaptiveBatches, FULL_PASS_MAX_BYTES, FULL_PASS_TOKEN_BUDGET, getAnalysisInstructions } = require('./analysis-budget.cjs');
 const { errorDetails, progressError } = require('./progress-error.cjs');
+const { readConfiguredLang } = require('./i18n.cjs');
 const versions = { prompt: '4', schema: '4', ledger: '3' };
 class AnalysisService {
   constructor({ store, onChange = () => {}, makeServer, run,
     resources = path.join(__dirname, 'analysis-assets'), logFile = path.join(path.dirname(store.file), 'analysis.jsonl'),
-    maxBytes = FULL_PASS_MAX_BYTES, tokenBudget = FULL_PASS_TOKEN_BUDGET }) {
+    maxBytes = FULL_PASS_MAX_BYTES, tokenBudget = FULL_PASS_TOKEN_BUDGET, lang = null }) {
     if (typeof makeServer !== 'function' || typeof run !== 'function') throw new TypeError('分析服务需要会话源和模型执行器');
-    Object.assign(this, { store, onChange, makeServer, run, resources, maxBytes, tokenBudget });
+    Object.assign(this, { store, onChange, makeServer, run, resources, maxBytes, tokenBudget, lang });
     this.log = createAnalysisLog(logFile);
     this.active = new Map();
     this.stopped = false;
+  }
+  activeLang() {
+    return this.lang || readConfiguredLang({ dataDir: path.dirname(this.store.file) });
   }
   analyze(key) { return this.start(key).promise; }
 
@@ -81,11 +85,16 @@ class AnalysisService {
       const extracted = captured.extracted;
       const projectGit = await readProjectGit(server.request.bind(server), threadId);
       job.log('project.git', { reason: projectGit.status, hasRemote: projectGit.hasRemote });
+      const lang = this.activeLang();
+      const activeVersions = lang === 'en'
+        ? { ...versions, prompt: `${versions.prompt}-en`, schema: `${versions.schema}-en` }
+        : versions;
+      const instructions = getAnalysisInstructions(lang);
       const previous = this.store.analysisState(key).analysis;
-      const delta = prepareIncremental(extracted, previous?.checkpoint, versions);
+      const delta = prepareIncremental(extracted, previous?.checkpoint, activeVersions);
       job.log('source.complete', { reason: delta.reason, turnCount: extracted.turnHashes.length,
         rawBytes: extracted.stats.rawBytes, compactBytes: extracted.stats.compactBytes, eventCount: delta.events.length,
-        changedTurn: delta.changedTurn, previousTaskCount: previous?.ledger?.tasks?.length || 0 });
+        changedTurn: delta.changedTurn, previousTaskCount: previous?.ledger?.tasks?.length || 0, lang });
       let ledger = previous?.ledger || delta.ledger;
       const allSources = { ...extracted.sources };
       if (ledger) {
@@ -110,9 +119,13 @@ class AnalysisService {
           allSources[ref] = { hostId, threadId, actionSequence: item.actionSequence, requestedAt: item.requestedAt };
           return { ref, type: 'manual', effectiveAtMs: item.requestedAt, state: item.record.state, progress: item.record.progress ?? null, note: item.record.note ?? '' };
         });
-      const prompt = fs.readFileSync(path.join(this.resources, 'prompt.zh-CN.txt'), 'utf8');
-      const schema = JSON.parse(fs.readFileSync(path.join(this.resources, 'output.schema.json'), 'utf8'));
-      if (manualEvents.length && delta.events.some(event => event.turnStartedAt == null)) extracted.gaps.push('部分对话时间未知，无法确定与手动记录的先后');
+      const promptFile = lang === 'en' && fs.existsSync(path.join(this.resources, 'prompt.en.txt')) ? 'prompt.en.txt' : 'prompt.zh-CN.txt';
+      const schemaFile = lang === 'en' && fs.existsSync(path.join(this.resources, 'output.en.schema.json')) ? 'output.en.schema.json' : 'output.schema.json';
+      const prompt = fs.readFileSync(path.join(this.resources, promptFile), 'utf8');
+      const schema = JSON.parse(fs.readFileSync(path.join(this.resources, schemaFile), 'utf8'));
+      if (manualEvents.length && delta.events.some(event => event.turnStartedAt == null)) {
+        extracted.gaps.push(lang === 'en' ? 'Some turn timestamps are unknown; ordering with manual records could not be verified' : '部分对话时间未知，无法确定与手动记录的先后');
+      }
       this.store.updateAnalysis(key, sequence, { stage: 'analyzing', batch: { current: 1, total: 1 } }); this.onChange(key, { status: 'pending', stage: 'analyzing' });
       job.log('analysis.stage', { stage: 'analyzing' });
       const allowedRefs = new Set((ledger?.tasks || []).flatMap(task => task.evidenceRefs));
@@ -128,6 +141,8 @@ class AnalysisService {
         maxBytes: this.maxBytes,
         tokenBudget: this.tokenBudget,
         sources: allSources,
+        lang,
+        instructions,
       });
       const totalBatches = batches.length;
       if (totalBatches > 1) {
@@ -145,15 +160,15 @@ class AnalysisService {
         this.onChange(key, { status: 'pending', stage: 'analyzing', batch: { current: currentBatch, total: totalBatches } });
 
         const log = (event, fields) => job.log(event, { batch: currentBatch, totalBatches, ...fields });
-        const budget = measureRequest({ input, prompt, schema, maxBytes: this.maxBytes, tokenBudget: this.tokenBudget });
+        const budget = measureRequest({ input, prompt, schema, maxBytes: this.maxBytes, tokenBudget: this.tokenBudget, lang, instructions });
         log('model.batch.start', { eventCount: events.length, inputBytes: budget.inputBytes, bytes: budget.bytes, estimatedTokens: budget.estimatedTokens });
-        const result = await this.run({ prompt, schema, log, signal: job.controller.signal, input, maxBytes: this.maxBytes, tokenBudget: this.tokenBudget });
+        const result = await this.run({ prompt, schema, log, signal: job.controller.signal, input, maxBytes: this.maxBytes, tokenBudget: this.tokenBudget, lang, instructions });
         job.controller.signal.throwIfAborted();
-        ledger = mergeAnalysis(ledger, result, allowedRefs);
+        ledger = mergeAnalysis(ledger, result, allowedRefs, { lang });
         log('model.batch.complete', { totalTasks: ledger.totalTasks, completedTasks: ledger.completedTasks, percent: ledger.percent });
       }
       job.controller.signal.throwIfAborted();
-      const checkpoint = commitCheckpoint(extracted, ledger, versions);
+      const checkpoint = commitCheckpoint(extracted, ledger, activeVersions);
       checkpoint.actionSequence = sequence;
       this.store.finishAnalysis(key, sequence, { ledger, checkpoint, sources: allSources, boundary: captured.boundary, projectGit });
       job.log('analysis.complete', { totalTasks: ledger.totalTasks, completedTasks: ledger.completedTasks, percent: ledger.percent });

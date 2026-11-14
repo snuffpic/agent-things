@@ -13,6 +13,7 @@ const { getUpdateInfo, startUpdate, verifyServices } = require('../npm-updates.c
 const { startupStatus } = require('../manual-status-startup.cjs');
 const { portInUse } = require('../startup/watch.cjs');
 const { COOLDOWN_MS } = require('../startup/controller.cjs');
+const { detectSystemLang } = require('../i18n.cjs');
 async function showUpdates(lang) {
   const zh = lang === 'zh';
   console.log(zh ? '\n正在检查 npm 最新版本…' : '\nChecking npm for updates…');
@@ -20,8 +21,10 @@ async function showUpdates(lang) {
     const info = await getUpdateInfo({ force: true });
     console.log(zh ? `当前安装版本：${info.currentVersion || '未安装'}` : `Installed version: ${info.currentVersion || 'not installed'}`);
     if (['queued', 'checking', 'downloading', 'waiting', 'installing'].includes(info.update?.stage)) {
-      const stages = { queued: '等待启动', checking: '检查版本', downloading: '下载中', waiting: '等待分析结束', installing: '升级中' };
-      console.log(zh ? `升级正在后台进行：${stages[info.update.stage]}。终端可以关闭。` : `Update running in background: ${info.update.stage}. You may close the terminal.`);
+      const stages = zh
+        ? { queued: '等待启动', checking: '检查版本', downloading: '下载中', waiting: '等待分析结束', installing: '升级中' }
+        : { queued: 'queued', checking: 'checking', downloading: 'downloading', waiting: 'waiting for analysis', installing: 'installing' };
+      console.log(zh ? `升级正在后台进行：${stages[info.update.stage]}。终端可以关闭。` : `Update running in background: ${stages[info.update.stage] || info.update.stage}. You may close the terminal.`);
       return;
     }
     if (info.update?.stage === 'failed') console.log(zh ? `上次升级失败：${info.update.error}` : `Previous update failed: ${info.update.error}`);
@@ -130,11 +133,15 @@ async function showHealthStatus(lang) {
     let healthy = false, attachment = null;
     try { await requestProgressHttp(stateFile, '/health'); healthy = true; } catch {}
     try { attachment = JSON.parse(fs.readFileSync(path.join(path.dirname(stateFile), 'attachment.json'), 'utf8')); } catch {}
-    if (attachment?.checkedAt && Date.now() - Date.parse(attachment.checkedAt) > 10000) attachment = { state: '连接状态已过期' };
-    const labels = { attached: '已连接', 'manual-debugger-required': '等待手动开启主进程调试器', error: attachment?.error || '连接失败' };
+    if (attachment?.checkedAt && Date.now() - Date.parse(attachment.checkedAt) > 10000) {
+      attachment = { state: zh ? '连接状态已过期' : 'connection status stale' };
+    }
+    const labels = zh
+      ? { attached: '已连接', 'manual-debugger-required': '等待手动开启主进程调试器', error: attachment?.error || '连接失败' }
+      : { attached: 'attached', 'manual-debugger-required': 'enable Main Process Debugger', error: attachment?.error || 'connection failed' };
     console.log(`Claude Desktop · Code: ${formatProbeText(env.claude, lang)}`);
     console.log(zh ? `  启用: ${config?.enabledApps.includes('claude') ? '是' : '否'}；后台: ${healthy ? '运行' : '停止'}；侧栏扩展: ${labels[attachment?.state] || attachment?.state || '等待连接'}`
-      : `  Enabled: ${Boolean(config?.enabledApps.includes('claude'))}; service: ${healthy}; sidebar extension: ${attachment?.state || 'waiting'}`);
+      : `  Enabled: ${Boolean(config?.enabledApps.includes('claude'))}; service: ${healthy}; sidebar extension: ${labels[attachment?.state] || attachment?.state || 'waiting'}`);
   }
   if (config?.enabledApps.includes('claude') && fs.existsSync(path.join(os.homedir(), '.claude/skills/agent-things-ui/.claude-plugin/plugin.json'))) console.log(zh ? 'Claude 会话卡片：已安装，使用 /things。' : 'Claude conversation card: installed, run /things.');
   console.log(zh ? 'MCP宿主连接状态请在客户端确认；注册配置与实际连接分别判断。\n' : 'Confirm MCP host connection in the client; configuration and connection are separate checks.\n');
@@ -155,16 +162,21 @@ async function runInteractiveCli(options = {}) {
   if (options.all || options.yes) {
     const env = await probeEnvironment();
     const apps = [env.codex, env.antigravity, env.claude].filter(app => app?.installed).map(app => app.id);
-    if (!apps.length) throw new Error('未检测到支持的应用，请先安装 ChatGPT.app、Antigravity.app 或 Claude.app。');
-    const lang = options.lang || config?.lang || 'zh';
+    const lang = options.lang || config?.lang || detectSystemLang();
+    if (!apps.length) {
+      throw new Error(lang === 'en'
+        ? 'No supported applications detected. Install ChatGPT.app, Antigravity.app, or Claude.app first.'
+        : '未检测到支持的应用，请先安装 ChatGPT.app、Antigravity.app 或 Claude.app。');
+    }
     await executeSetup({ lang, enabledApps: apps, autoRestartCodex: false, verify: verifyServices });
     completed(apps, lang === 'zh');
     return;
   }
-  if (!process.stdin.isTTY) throw new Error('交互模式需要终端；自动安装请使用 setup --yes。');
+  if (!process.stdin.isTTY) throw new Error('Interactive mode requires a terminal; use setup --yes for automatic installation. / 交互模式需要终端；自动安装请使用 setup --yes。');
   if (!config || config.installed === false || !fs.existsSync(path.join(DATA_DIR, 'runtime/bin/codex-session-status.cjs'))) {
     const env = await probeEnvironment();
-    const lang = options.lang || await selectLanguageWithProbe(env, config?.lang || 'zh');
+    const defaultLang = config?.lang || detectSystemLang();
+    const lang = options.lang || await selectLanguageWithProbe(env, defaultLang);
     if (lang === null) return;
     const apps = await selectApps(env, lang, config?.installed === false ? null : config?.enabledApps || null);
     if (apps === null || !apps.length) { console.log(lang === 'zh' ? '安装已取消。' : 'Setup cancelled.'); return; }
@@ -178,21 +190,33 @@ async function runInteractiveCli(options = {}) {
     completed(apps, lang === 'zh');
     return;
   }
-  const lang = options.lang || config.lang, zh = lang === 'zh';
+  let lang = options.lang || config.lang;
+  let zh = lang === 'zh';
   await showHealthStatus(lang);
   while (true) {
     const items = [
       { label: zh ? '1. 查看运行状态' : '1. Health check', value: 'health' },
       { label: zh ? '2. 修改启用应用' : '2. Update enabled apps', value: 'apps' },
-      { label: zh ? '3. 检查更新 / 升级' : '3. Check for updates / upgrade', value: 'upgrade' },
-      { label: zh ? '4. 同步组件与技能' : '4. Sync components and skills', value: 'sync' },
-      { label: zh ? '5. 卸载' : '5. Uninstall', value: 'uninstall' },
-      { label: zh ? '6. 退出' : '6. Exit', value: 'exit' },
+      { label: zh ? '3. 切换界面与分析语言（当前：简体中文）' : '3. Switch language (Current: English)', value: 'lang' },
+      { label: zh ? '4. 检查更新 / 升级' : '4. Check for updates / upgrade', value: 'upgrade' },
+      { label: zh ? '5. 同步组件与技能' : '5. Sync components and skills', value: 'sync' },
+      { label: zh ? '6. 卸载' : '6. Uninstall', value: 'uninstall' },
+      { label: zh ? '7. 退出' : '7. Exit', value: 'exit' },
     ];
     const action = await selectMenu(zh ? `Agent Things 管理（已启用：${config.enabledApps.join(', ') || '无'}）` : `Agent Things (Enabled: ${config.enabledApps.join(', ') || 'none'})`, items, lang);
     if (action === null || action === 'exit') return;
     if (action === 'health') { await showHealthStatus(lang); continue; }
     if (action === 'upgrade') { await showUpdates(lang); continue; }
+    if (action === 'lang') {
+      const nextLang = await selectLanguageWithProbe(await probeEnvironment(), lang);
+      if (nextLang === null) continue;
+      await executeSetup({ lang: nextLang, enabledApps: config.enabledApps, autoRestartCodex: false, verify: verifyServices });
+      config = readConfig() || { ...config, lang: nextLang };
+      lang = config.lang || nextLang;
+      zh = lang === 'zh';
+      completed(config.enabledApps, zh);
+      continue;
+    }
     if (action === 'uninstall') {
       if (await askConfirm(zh ? '卸载插件后台与入口，保留任务记录和备份？' : 'Uninstall services and integrations, preserving task records and backups?', false, lang)) {
         await uninstallAll(); console.log(zh ? '卸载完成，记录与备份已保留。请重新加载宿主 MCP 配置。' : 'Uninstalled; records and backups preserved. Reload the host MCP configuration.'); return;

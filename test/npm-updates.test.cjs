@@ -102,6 +102,7 @@ function worker(t, fixture, { fail = false, pending = false, installed = true, e
   };
   const load = id => {
     if (Object.hasOwn(mocks, id)) return mocks[id];
+    if (id === './i18n.cjs') return require('../src/i18n.cjs');
     if (id.startsWith(data) && id.endsWith('/src/cli/setup-orchestrator.cjs')) return { executeSetup: async options => {
       calls.push(['setup', options]);
       if (fail) throw Error('simulated setup rollback');

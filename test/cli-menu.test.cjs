@@ -26,7 +26,7 @@ async function simulate(actions, { first = false, select = ['antigravity'], conf
   };
   const mod = { exports: {} };
   vm.runInThisContext('(function(require,module,exports,process,console){' + fs.readFileSync(path.join(__dirname, '../src/cli/interactive-cli.cjs'), 'utf8') + '\n})')(
-    id => Object.hasOwn(mocks, id) ? mocks[id] : require(id), mod, mod.exports, { stdin: { isTTY: tty } }, { log: (...args) => output.push(args.join(' ')) });
+    id => Object.hasOwn(mocks, id) ? mocks[id] : id === '../i18n.cjs' ? require('../src/i18n.cjs') : require(id), mod, mod.exports, { stdin: { isTTY: tty } }, { log: (...args) => output.push(args.join(' ')) });
   await mod.exports.runInteractiveCli();
   return { calls, output, initialSelections };
 }

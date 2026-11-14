@@ -1,7 +1,10 @@
-import { CONTENT_WIDTH, colors, svg, slider, primary, clearButton, paneIcon, PANE_ICON_WIDTH } from './presentation.js';
+import { CONTENT_WIDTH, colors, svg, slider, primary, clearButton, paneIcon, paneIconWidth, measureButtonWidth, measureClearWidth } from './presentation.js';
 import { progressValue, progressState } from './progress.js';
 
 export default function controls(props, surface) {
+  const sliderWidth = Number.isFinite(Number(props.width)) && Number(props.width) > 0
+    ? Math.max(130, Math.round(Number(props.width)))
+    : CONTENT_WIDTH;
   const current = surface.state;
   if (!current || current.received !== props.value && !current.dragging && !current.editingNumber) {
     surface.setState({ received: props.value, value: props.value, dragging: false });
@@ -12,14 +15,15 @@ export default function controls(props, surface) {
     surface.setState({ ...surface.state, received: props.value, value, dragging });
     return value;
   };
-  const pointerValue = event => ((event.fine?.x ?? event.x + .5) / Math.max(1, surface.columns) * CONTENT_WIDTH - 7) / (CONTENT_WIDTH - 14) * 100;
+  const pointerValue = event => ((event.fine?.x ?? event.x + .5) / Math.max(1, surface.columns) * sliderWidth - 7) / (sliderWidth - 14) * 100;
   surface.onPointer(event => {
     if (props.disabled || event.button && event.button !== 'left') return;
     const latest = surface.state || state;
     if (props.kind === 'icon') {
       // 只有右侧图标区域可点；左侧留给悬停提示。
-      const x = (event.fine?.x ?? event.x + .5) / Math.max(1, surface.columns) * PANE_ICON_WIDTH;
-      const inside = x >= 74 && x <= PANE_ICON_WIDTH + 2 && event.y >= 0 && event.y <= surface.rows;
+      const totalWidth = paneIconWidth(props.label);
+      const x = (event.fine?.x ?? event.x + .5) / Math.max(1, surface.columns) * totalWidth;
+      const inside = x >= (totalWidth - 30) && x <= totalWidth + 2 && event.y >= 0 && event.y <= surface.rows;
       if (event.type === 'enter' || event.type === 'move') surface.setState({ ...latest, hovered: inside });
       if (event.type === 'leave') surface.setState({ ...latest, hovered: false, pressed: false });
       if (event.type === 'down' && inside) surface.setState({ ...latest, hovered: true, pressed: true });
@@ -42,9 +46,10 @@ export default function controls(props, surface) {
       return;
     }
     const y = (event.fine?.y ?? event.y + .5) / Math.max(1, surface.rows) * 110;
+    const hitThreshold = Math.min(0.85, Math.max(0.66, (sliderWidth - 96) / sliderWidth));
     if (event.type === 'down') {
       if (y < 45) {
-        if (event.x / Math.max(1, surface.columns) > .66) surface.setState({ ...latest, editingNumber: true, buffer: latest.value == null ? '' : String(latest.value), selectAll: true });
+        if (event.x / Math.max(1, surface.columns) > hitThreshold) surface.setState({ ...latest, editingNumber: true, buffer: latest.value == null ? '' : String(latest.value), selectAll: true });
       } else { surface.setState({ ...latest, editingNumber: false }); update(pointerValue(event), true); }
     } else if (event.type === 'move' && latest.dragging) {
       update(pointerValue(event), true);
@@ -87,12 +92,21 @@ export default function controls(props, surface) {
   if (props.kind === 'slider') {
     const color = colors[state.value == null ? props.state : progressState(props.state, state.value)] || colors.unstarted;
     const number = state.editingNumber ? state.buffer || '—' : state.value ?? '—';
-    const selection = state.editingNumber && state.selectAll ? '<rect x="214" y="5" width="65" height="30" rx="3" fill="#0169cc30"/>' : '';
-    const caret = state.editingNumber && !state.selectAll ? '<path d="M281 7V33" stroke="#0169cc"/>' : '';
-    const picture = svg(`${selection}<text x="0" y="28" font-size="11" fill="currentColor" opacity=".68">进度</text><text x="279" y="30" text-anchor="end" font-size="27" font-weight="550" fill="currentColor">${number}</text>${caret}<text x="288" y="26" font-size="12" fill="currentColor" opacity=".68">%</text><path d="M214 41H279" stroke="currentColor" opacity=".2"/><g transform="translate(0 55)">${slider(state.value, color)}</g>`, CONTENT_WIDTH, 110);
+    const numRight = sliderWidth - 25;
+    const pctX = sliderWidth - 16;
+    const selX = sliderWidth - 90;
+    const caretX = sliderWidth - 23;
+    const selection = state.editingNumber && state.selectAll ? `<rect x="${selX}" y="5" width="65" height="30" rx="3" fill="#0169cc30"/>` : '';
+    const caret = state.editingNumber && !state.selectAll ? `<path d="M${caretX} 7V33" stroke="#0169cc"/>` : '';
+    const progressWord = props.progressLabel || '进度';
+    const unrecordedWord = props.unrecordedWord || '未记录';
+    const picture = svg(`${selection}<text x="0" y="28" font-size="11" fill="currentColor" opacity=".68">${progressWord}</text><text x="${numRight}" y="30" text-anchor="end" font-size="27" font-weight="550" fill="currentColor">${number}</text>${caret}<text x="${pctX}" y="26" font-size="12" fill="currentColor" opacity=".68">%</text><path d="M${selX} 41H${numRight}" stroke="currentColor" opacity=".2"/><g transform="translate(0 55)">${slider(state.value, color, sliderWidth)}</g>`, sliderWidth, 110, 'xMinYMid meet');
     // The desktop Client tree accepts Svg nodes although its terminal element table has no Svg constructor.
-    return { type: 'Svg', props: { source: picture, alt: `进度 ${state.value ?? '未记录'}%`, width: 4096, height: 110 } };
+    return { type: 'Svg', props: { source: picture, alt: `${progressWord} ${state.value ?? unrecordedWord}%`, width: sliderWidth, height: 110 } };
   }
-  if (props.kind === 'icon') return { type: 'Svg', props: { source: paneIcon(state.hovered, state.pressed), alt: props.label, width: 4096, height: 28 } };
-  return { type: 'Svg', props: { source: props.action === 'clear' ? clearButton(state.hovered, state.pressed) : primary(props.label, props.disabled, state.hovered, state.pressed && state.hovered), alt: props.label, width: 4096, height: props.action === 'clear' ? 28 : 36 } };
+  if (props.kind === 'icon') return { type: 'Svg', props: { source: paneIcon(state.hovered, state.pressed, props.label), alt: props.label, width: paneIconWidth(props.label), height: 28 } };
+  const buttonWidth = props.action === 'clear'
+    ? (props.label === '清除进度' || !props.label ? 64 : measureClearWidth(props.label))
+    : measureButtonWidth(props.label);
+  return { type: 'Svg', props: { source: props.action === 'clear' ? clearButton(state.hovered, state.pressed, props.label, buttonWidth) : primary(props.label, props.disabled, state.hovered, state.pressed && state.hovered, buttonWidth), alt: props.label, width: buttonWidth, height: props.action === 'clear' ? 28 : 36 } };
 }

@@ -1,0 +1,93 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "gitPush": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "not_pushed",
+            "pushed"
+          ]
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "status",
+        "evidenceRefs"
+      ],
+      "additionalProperties": false
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "knownTaskId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "blocked",
+              "needs_verification",
+              "done"
+            ]
+          },
+          "evidenceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 60
+          }
+        },
+        "required": [
+          "knownTaskId",
+          "title",
+          "summary",
+          "status",
+          "evidenceRefs"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "removedTaskIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Existing task IDs explicitly cancelled, superseded, or unrelated to the current goal; keep completed tasks."
+    }
+  },
+  "required": [
+    "summary",
+    "gitPush",
+    "tasks",
+    "removedTaskIds"
+  ],
+  "additionalProperties": false,
+  "description": "Incremental task updates for this batch; global counts are computed after merge."
+}

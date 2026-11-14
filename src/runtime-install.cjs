@@ -4,6 +4,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const { verifyBridgeBundle } = require('./native-bridge.cjs');
+const PACKAGE_VERSION = require('../package.json').version;
 
 const COMPONENT_ID = 'agent-things';
 const MANAGED_MARKER_FILE = '.agent-things-managed.json';
@@ -189,7 +190,7 @@ function repairPluginRegistry(dataDir, homeDirectory, options = {}) {
     componentId: COMPONENT_ID,
     target: agyPluginDir,
     installId: marker.installId,
-    packageVersion: marker.packageVersion || '1.1.1',
+    packageVersion: marker.packageVersion || PACKAGE_VERSION,
     repairedAt: new Date().toISOString(),
   };
 
@@ -449,7 +450,7 @@ function stageRuntime(source, stage, installId) {
   const marker = {
     version: 1,
     componentId: COMPONENT_ID,
-    packageVersion: '1.1.1',
+    packageVersion: PACKAGE_VERSION,
     installId,
     managed: true,
     installedAt: new Date().toISOString(),
@@ -475,7 +476,7 @@ function stageAntigravityPlugin(source, stage, installId) {
   const marker = {
     version: 1,
     componentId: COMPONENT_ID,
-    packageVersion: '1.1.1',
+    packageVersion: PACKAGE_VERSION,
     installId,
     managed: true,
     installedAt: new Date().toISOString(),

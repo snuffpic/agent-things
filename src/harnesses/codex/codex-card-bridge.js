@@ -5,6 +5,13 @@
   const readActions = new Set(['analysis-state', 'project-git', 'app-update-info']);
   let nextId = 0, ready = false, theme, initial, watchGeneration = 0;
 
+  const uiText = (key, fallback) => {
+    const p = window.__agentThingsPresentation;
+    const lang = initial?.lang || initial?.snapshot?.lang || window.__agentThingsLang || p?.lang || 'zh';
+    const ui = p?.forLang ? p.forLang(lang) : null;
+    return ui?.strings?.[key] ?? p?.strings?.[key] ?? fallback;
+  };
+
   function notify(method, params, id) {
     window.parent.postMessage({ jsonrpc: '2.0', method, params, ...(id == null ? {} : { id }) }, '*');
   }
@@ -12,7 +19,7 @@
   function request(method, params, timeout = 15000, uiRequestId) {
     const id = ++nextId;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { pending.delete(id); reject(new Error('卡片连接超时')); }, timeout);
+      const timer = setTimeout(() => { pending.delete(id); reject(new Error(uiText('cardTimeout', '卡片连接超时'))); }, timeout);
       pending.set(id, { resolve, reject, timer, uiRequestId });
       notify(method, params, id);
     });
@@ -28,7 +35,7 @@
         } });
         if (generation !== watchGeneration) return;
         const state = result.structuredContent;
-        if (result.isError || !state?.cursor) throw new Error(result.content?.[0]?.text || '卡片同步暂不可用');
+        if (result.isError || !state?.cursor) throw new Error(result.content?.[0]?.text || uiText('cardSyncUnavailable', '卡片同步暂不可用'));
         cursor = state.cursor;
         retryMs = 500;
         window.__codexSessionStatus?.receiveCardEvent(state);
@@ -46,7 +53,7 @@
     for (const [id, entry] of pending) {
       clearTimeout(entry.timer);
       notify('notifications/cancelled', { requestId: id });
-      entry.reject(new Error('卡片已关闭'));
+      entry.reject(new Error(uiText('cardClosed', '卡片已关闭')));
     }
     pending.clear();
   });
@@ -57,18 +64,18 @@
   function mount() {
     if (!ready || !initial || window.__codexSessionStatus) return;
     const { conversationId, cardToken, key, title, snapshot, analysisState, session } = initial;
-    if (!conversationId || !key || !snapshot) { container.textContent = '卡片缺少当前会话信息'; return; }
-    if (!cardToken) { container.textContent = '卡片授权不可用，请重新打开会话进度卡片'; return; }
+    if (!conversationId || !key || !snapshot) { container.textContent = uiText('cardMissingSession', '卡片缺少当前会话信息'); return; }
+    if (!cardToken) { container.textContent = uiText('cardAuthUnavailable', '卡片授权不可用，请重新打开会话进度卡片'); return; }
     container.replaceChildren();
     installCodexSessionStatus('codex-mcp-app', null, {
-      container, key, title, snapshot, analysisState, session, theme,
+      container, key, title, snapshot, analysisState, session, theme, lang: initial.lang || snapshot?.lang,
       async send(payload) {
         const { type, requestId, expectedRevision, record, source, cancelRequestId } = JSON.parse(payload);
         if (type === 'panel-event') return;
         if (type === 'cancel-request') {
           for (const [id, entry] of pending) if (entry.uiRequestId === cancelRequestId) {
             notify('notifications/cancelled', { requestId: id }); clearTimeout(entry.timer); pending.delete(id);
-            entry.reject(Object.assign(new Error('请求已取消'), { code: 'REQUEST_CANCELLED' }));
+            entry.reject(Object.assign(new Error(uiText('cardRequestCancelled', '请求已取消')), { code: 'REQUEST_CANCELLED' }));
           }
           return;
         }
@@ -77,7 +84,7 @@
           const result = await request('tools/call', { name, arguments: { conversation_id: conversationId, card_token: cardToken, action: type,
             ...(expectedRevision == null ? {} : { expectedRevision }), ...(record === undefined ? {} : { record }), ...(source ? { source } : {}) } }, 18000, requestId);
           const errorInfo = result.structuredContent?.errorInfo;
-          const error = result.isError || !result.structuredContent ? result.content?.[0]?.text || '卡片操作失败' : undefined;
+          const error = result.isError || !result.structuredContent ? result.content?.[0]?.text || uiText('cardOpFailed', '卡片操作失败') : undefined;
           window.__codexSessionStatus?.reply({ requestId, ...result.structuredContent, error, errorInfo });
         } catch (error) { window.__codexSessionStatus?.reply({ requestId, error: error.message, errorInfo: { code: error.code || 'HOST_UNAVAILABLE', message: error.message, retryable: true } }); }
       },

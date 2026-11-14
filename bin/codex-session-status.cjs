@@ -11,6 +11,7 @@ const { CDP_PORT } = require('../src/cdp.cjs');
 const { installAutostart, disableAutostart, startupStatus } = require('../src/manual-status-startup.cjs');
 const { installCodexMcp, disableCodexMcp } = require('../src/codex-mcp-config.cjs');
 const { runInteractiveCli, showHealthStatus } = require('../src/cli/interactive-cli.cjs');
+const { readConfiguredLang } = require('../src/i18n.cjs');
 
 function resolveSessionKey(store, convId) { return store.resolveKey(convId); }
 
@@ -65,9 +66,9 @@ async function runMcpServer({ store, directory, port }) {
 
   const { serveMcp } = require('../src/mcp-stdio.cjs');
   const { requestProgressHttp } = require('../src/local-progress-http.cjs');
-  const { createCodexCard, tools: extraTools, resource } = require('../src/harnesses/codex/codex-card.cjs');
+  const { createCodexCard, tools: staticExtraTools, getCardTools, resource } = require('../src/harnesses/codex/codex-card.cjs');
   const card = createCodexCard({ store });
-  serveMcp({ name: 'codex-session-status', extraTools, resource,
+  serveMcp({ name: 'codex-session-status', extraTools: lang => getCardTools(lang), resource,
     onClose: async () => {
       card.stopEvents();
       if (agent?.analysisService) await Promise.allSettled([...agent.analysisService.active.values()].map(job => job.promise));
@@ -75,7 +76,7 @@ async function runMcpServer({ store, directory, port }) {
     },
     callTool: async (name, args, meta, options) => {
       assertIntegrationEnabled('codex');
-      if (extraTools.some(tool => tool.name === name)) return card.call(name, args, meta, options);
+      if (staticExtraTools.some(tool => tool.name === name)) return card.call(name, args, meta, options);
       return (await requestProgressHttp(store.file, '/tools', { name, args }, undefined, options)).value;
     },
   });
@@ -96,34 +97,54 @@ async function main() {
   }
   const { command, port, watchStartup } = options;
   const directory = options.directory || path.join(os.homedir(), 'Library/Application Support/CodexSessionStatus');
+  const en = readConfiguredLang({ dataDir: directory }) === 'en';
 
   if (command === 'help' || command === '--help' || command === '-h') {
-    console.log('用法：agent-things [command] [options]\n');
-    console.log('无参数直接运行：启动交互式向导（环境探测、中英切换、App 多选、后台无感常驻）\n');
-    console.log('核心命令：');
-    console.log('  setup         交互式安装与管理；--yes/--all 自动配置已安装的支持应用；--lang zh|en');
-    console.log('  doctor        查看客户端、后台和挂载诊断');
-    console.log('  run           前台运行调试模式，连接 39222 端口并挂载 UI (按 Ctrl+C 退出)');
-    console.log('  status        查看已记录会话进度快照 (JSON)');
-    console.log('  mcp           作为原生 MCP 伴生服务运行 (JSON-RPC stdio)');
-    console.log('  install-mcp   将本服务写入 ~/.codex/config.toml 中作为原生伴生 MCP 服务');
-    console.log('  disable-mcp   从 ~/.codex/config.toml 中移除伴生 MCP 服务');
-    console.log('  update-renderer / install-autostart / disable-autostart：高级面板更新与Codex后台管理');
-    console.log('  run/status/mcp 支持 --port；run/status/mcp/update-renderer/install-autostart 支持 --data-dir；run 支持 --watch-startup');
+    if (en) {
+      console.log('Usage: agent-things [command] [options]\n');
+      console.log('Run with no arguments: launch interactive wizard (environment probe, language toggle, app selection, background daemon)\n');
+      console.log('Core commands:');
+      console.log('  setup         Interactive setup & management; --yes/--all auto-configures detected apps; --lang zh|en');
+      console.log('  doctor        Inspect client, daemon, and mounting diagnostics');
+      console.log('  run           Run foreground debug mode on port 39222 and attach UI (Ctrl+C to exit)');
+      console.log('  status        Print recorded session progress snapshot (JSON)');
+      console.log('  mcp           Run as native companion MCP server (JSON-RPC stdio)');
+      console.log('  install-mcp   Register this server in ~/.codex/config.toml as a native companion MCP server');
+      console.log('  disable-mcp   Remove this companion MCP server from ~/.codex/config.toml');
+      console.log('  update-renderer / install-autostart / disable-autostart: advanced renderer updates & Codex autostart management');
+      console.log('  run/status/mcp support --port; run/status/mcp/update-renderer/install-autostart support --data-dir; run supports --watch-startup');
+    } else {
+      console.log('用法：agent-things [command] [options]\n');
+      console.log('无参数直接运行：启动交互式向导（环境探测、中英切换、App 多选、后台无感常驻）\n');
+      console.log('核心命令：');
+      console.log('  setup         交互式安装与管理；--yes/--all 自动配置已安装的支持应用；--lang zh|en');
+      console.log('  doctor        查看客户端、后台和挂载诊断');
+      console.log('  run           前台运行调试模式，连接 39222 端口并挂载 UI (按 Ctrl+C 退出)');
+      console.log('  status        查看已记录会话进度快照 (JSON)');
+      console.log('  mcp           作为原生 MCP 伴生服务运行 (JSON-RPC stdio)');
+      console.log('  install-mcp   将本服务写入 ~/.codex/config.toml 中作为原生伴生 MCP 服务');
+      console.log('  disable-mcp   从 ~/.codex/config.toml 中移除伴生 MCP 服务');
+      console.log('  update-renderer / install-autostart / disable-autostart：高级面板更新与Codex后台管理');
+      console.log('  run/status/mcp 支持 --port；run/status/mcp/update-renderer/install-autostart 支持 --data-dir；run 支持 --watch-startup');
+    }
     return;
   }
 
   if (command === 'install-mcp') {
     const scriptPath = path.join(directory, 'runtime/bin/codex-session-status.cjs');
-    if (!fs.existsSync(scriptPath)) throw new Error('请先运行 agent-things setup 安装运行时。');
+    if (!fs.existsSync(scriptPath)) throw new Error(en ? 'Please run agent-things setup first to install the runtime.' : '请先运行 agent-things setup 安装运行时。');
     const res = installCodexMcp({ scriptPath });
-    console.log(`✅ 已成功将 Agent Things (session_status) 注册为 Codex 原生伴生 MCP 服务！\n配置文件：${res.file}`);
+    console.log(en
+      ? `✅ Registered Agent Things (session_status) as a native Codex MCP server!\nConfig file: ${res.file}`
+      : `✅ 已成功将 Agent Things (session_status) 注册为 Codex 原生伴生 MCP 服务！\n配置文件：${res.file}`);
     return;
   }
 
   if (command === 'disable-mcp') {
     const res = disableCodexMcp({});
-    console.log(res.removed ? '✅ 已从 ~/.codex/config.toml 中移除 Agent Things (session_status) 伴生配置。' : 'ℹ️ 未发现 Agent Things (session_status) 配置。');
+    console.log(en
+      ? (res.removed ? '✅ Removed Agent Things (session_status) from ~/.codex/config.toml.' : 'ℹ️ No Agent Things (session_status) configuration found.')
+      : (res.removed ? '✅ 已从 ~/.codex/config.toml 中移除 Agent Things (session_status) 伴生配置。' : 'ℹ️ 未发现 Agent Things (session_status) 配置。'));
     return;
   }
 
@@ -131,7 +152,7 @@ async function main() {
     const resources = ['session-status.js', 'harnesses/codex/codex-harness.js', 'ui-foundation.cjs'].map(name => {
       const source = path.join(__dirname, '../src', name);
       const destination = path.join(directory, 'runtime/src', name);
-      if (name !== 'ui-foundation.cjs' && !fs.existsSync(destination)) throw new Error('未找到已安装的渲染资源');
+      if (name !== 'ui-foundation.cjs' && !fs.existsSync(destination)) throw new Error(en ? 'Installed renderer resource not found' : '未找到已安装的渲染资源');
       const contents = fs.readFileSync(source);
       new vm.Script(contents.toString('utf8'));
       return { contents, destination };
@@ -141,19 +162,19 @@ async function main() {
       try { fs.writeFileSync(temporary, contents, { flag: 'wx', mode: 0o600 }); fs.renameSync(temporary, destination); }
       finally { fs.rmSync(temporary, { force: true }); }
     }
-    console.log('渲染资源已更新');
+    console.log(en ? 'Renderer resources updated' : '渲染资源已更新');
     return;
   }
 
   if (command === 'install-autostart') {
-    console.log('正在设置后台自动挂载…');
+    console.log(en ? 'Configuring background autostart…' : '正在设置后台自动挂载…');
     console.log(JSON.stringify(await installAutostart(directory), null, 2));
     return;
   }
 
   if (command === 'disable-autostart') {
     await disableAutostart();
-    console.log('已关闭自动挂载，手动记录保留。');
+    console.log(en ? 'Background autostart disabled; manual records preserved.' : '已关闭自动挂载，手动记录保留。');
     return;
   }
 
@@ -180,11 +201,11 @@ async function main() {
     return;
   }
 
-  if (command !== 'run') throw new Error(`未知命令：${command}`);
+  if (command !== 'run') throw new Error(en ? `Unknown command: ${command}` : `未知命令：${command}`);
 
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const lock = path.join(directory, 'agent.lock');
-  if (!tryAcquirePidLock(lock)) throw new Error('此数据目录已有进程运行，请使用已有进程');
+  if (!tryAcquirePidLock(lock)) throw new Error(en ? 'Another process is already running for this data directory' : '此数据目录已有进程运行，请使用已有进程');
   let agent;
   try {
     store.recoverPending();
@@ -207,10 +228,14 @@ async function main() {
   const scan = async () => {
     try {
       await agent.scan();
-      const message = agent.sessions.size ? `已连接 ${agent.sessions.size} 个 Codex 窗口` : '等待 Codex 主窗口';
+      const message = agent.sessions.size
+        ? (en ? `Connected to ${agent.sessions.size} Codex window(s)` : `已连接 ${agent.sessions.size} 个 Codex 窗口`)
+        : (en ? 'Waiting for Codex main window' : '等待 Codex 主窗口');
       if (message !== reported) { console.log(message); reported = message; }
     } catch {
-      const message = `等待本地调试端口 ${port}；保存工作后，以 --remote-debugging-port=${port} 启动客户端。`;
+      const message = en
+        ? `Waiting for local debug port ${port}; save your work and launch the client with --remote-debugging-port=${port}.`
+        : `等待本地调试端口 ${port}；保存工作后，以 --remote-debugging-port=${port} 启动客户端。`;
       if (message !== reported) { console.log(message); reported = message; }
     }
   };

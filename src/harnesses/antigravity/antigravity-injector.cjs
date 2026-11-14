@@ -4,6 +4,8 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { CdpSession, listTargets } = require('../../cdp.cjs');
+const { readRendererResource } = require('../../renderer-resource.cjs');
+const { readConfiguredLang } = require('../../i18n.cjs');
 
 class AntigravityInjector {
   constructor(credentials, { allowOrigin = () => {} } = {}) {
@@ -30,16 +32,22 @@ class AntigravityInjector {
       const live = new Set(targets.map(target => target.id));
       for (const [id, entry] of this.sessions) if (!live.has(id)) { entry.session.close(); this.sessions.delete(id); }
       const root = path.resolve(__dirname, '../..');
+      const lang = readConfiguredLang();
       const connection = {
         origin: `http://127.0.0.1:${this.credentials.port}`,
         token: this.credentials.token,
         brainDir: path.resolve(os.homedir(), '.gemini', 'antigravity', 'brain'),
+        lang,
       };
       const sessionStatusPath = fs.existsSync(path.join(root, 'src', 'session-status.js'))
         ? path.join(root, 'src', 'session-status.js')
         : path.join(root, 'session-status.js');
-      const source = `window.__agentThingsConnection = ${JSON.stringify(connection)};\n` +
-        fs.readFileSync(path.join(__dirname, 'antigravity-harness.js'), 'utf8') + '\n' + fs.readFileSync(sessionStatusPath, 'utf8');
+      const resource = readRendererResource({
+        harnessFile: path.join(__dirname, 'antigravity-harness.js'),
+        rendererFile: sessionStatusPath,
+        lang,
+      });
+      const source = `window.__agentThingsConnection = ${JSON.stringify(connection)};\n${resource.source}`;
       const version = crypto.createHash('sha256').update(source).digest('hex');
       for (const target of targets) {
         if (this.stopped) break;

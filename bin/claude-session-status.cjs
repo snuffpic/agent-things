@@ -6,10 +6,17 @@ const { requestProgressHttp } = require('../src/local-progress-http.cjs');
 const { serveMcp } = require('../src/mcp-stdio.cjs');
 const { assertIntegrationEnabled } = require('../src/cli/integration-state.cjs');
 const { readConfig } = require('../src/cli/setup-orchestrator.cjs');
+const { readConfiguredLang } = require('../src/i18n.cjs');
 
 async function main(args = process.argv.slice(2)) {
-  if (args.some(arg => !['--daemon', '--no-ui', '--help', '-h'].includes(arg))) throw new Error('未知 Claude 服务选项');
-  if (args.includes('--help') || args.includes('-h')) { console.log('用法：claude-session-status [--daemon] [--no-ui]；Agent Things (Claude) 后台与 MCP stdio 服务。'); return; }
+  const en = readConfiguredLang() === 'en';
+  if (args.some(arg => !['--daemon', '--no-ui', '--help', '-h'].includes(arg))) throw new Error(en ? 'Unknown Claude service option' : '未知 Claude 服务选项');
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(en
+      ? 'Usage: claude-session-status [--daemon] [--no-ui]; Agent Things (Claude) daemon and MCP stdio service.'
+      : '用法：claude-session-status [--daemon] [--no-ui]；Agent Things (Claude) 后台与 MCP stdio 服务。');
+    return;
+  }
   assertIntegrationEnabled('claude');
   const stateFile = process.env.SESSION_STATUS_STATE_FILE || DEFAULT_STATE_FILE;
   const port = Number(process.env.SESSION_STATUS_PORT ?? DEFAULT_PORT);

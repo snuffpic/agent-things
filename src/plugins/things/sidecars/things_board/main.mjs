@@ -9,6 +9,7 @@ import { homedir } from 'node:os';
 import { join, basename, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import http from 'node:http';
+import { getUiForLang } from './ui-i18n.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -34,6 +35,71 @@ const CREDENTIAL_FILE = `${DEFAULT_STATE_FILE}.http.json`;
 const DEFAULT_SUMMARY_DB = join(homedir(), '.gemini/antigravity/conversation_summaries.db');
 const DEFAULT_BRAIN_DIR = join(homedir(), '.gemini/antigravity/brain');
 const titleCache = new Map();
+let cachedOsLang = null;
+let cachedOsLangTs = 0;
+
+function normalizeLang(value) {
+  if (typeof value !== 'string') return null;
+  const raw = value.trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === 'en' || raw.startsWith('en_') || raw.startsWith('en-')) return 'en';
+  if (raw === 'zh' || raw.startsWith('zh_') || raw.startsWith('zh-')) return 'zh';
+  return null;
+}
+
+function detectOsLang() {
+  const envLang =
+    normalizeLang(process.env.LC_ALL) ||
+    normalizeLang(process.env.LC_MESSAGES) ||
+    normalizeLang(process.env.LANG);
+  if (envLang) return envLang;
+  const now = Date.now();
+  if (cachedOsLang && now - cachedOsLangTs <= 10000) return cachedOsLang;
+  try {
+    const out = execFileSync('defaults', ['read', '-g', 'AppleLocale'], {
+      encoding: 'utf8',
+      timeout: 500,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const parsed = normalizeLang(out);
+    if (parsed) {
+      cachedOsLang = parsed;
+      cachedOsLangTs = now;
+      return parsed;
+    }
+  } catch (_) {}
+  cachedOsLang = 'zh';
+  cachedOsLangTs = now;
+  return cachedOsLang;
+}
+
+function readConfiguredLang() {
+  const envOverride = normalizeLang(process.env.AGENT_THINGS_LANG);
+  if (envOverride) return envOverride;
+  const candidates = [
+    process.env.AGENT_THINGS_CONFIG,
+    join(homedir(), '.gemini/antigravity/session-status/config.json'),
+    join(homedir(), 'Library/Application Support/AgentThings/config.json'),
+    join(homedir(), 'Library/Application Support/CodexSessionStatus/config.json'),
+  ].filter(Boolean);
+  for (const cfgPath of candidates) {
+    try {
+      if (!existsSync(cfgPath)) continue;
+      const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
+      const lang = normalizeLang(cfg?.lang);
+      if (lang) return lang;
+    } catch (_) {}
+  }
+  return detectOsLang();
+}
+
+function getActiveUi(lang) {
+  return getUiForLang(normalizeLang(lang) || readConfiguredLang());
+}
+
+function sidecarMsg(lang, zhText, enText) {
+  return (normalizeLang(lang) || readConfiguredLang()) === 'en' ? enText : zhText;
+}
 
 function sanitizeConvId(convId) {
   const cleanId = String(convId || '').trim().replace(/^local:/, '');
@@ -127,7 +193,7 @@ function getCredentials() {
 function requestDaemon(path, method = 'GET', body = null, timeoutMs = 2500) {
   const creds = getCredentials();
   if (!creds || !creds.port || !creds.token) {
-    return Promise.reject(new Error('守护进程凭据文件未就绪'));
+    return Promise.reject(new Error(sidecarMsg(null, '守护进程凭据文件未就绪', 'Daemon credentials not ready')));
   }
 
   return new Promise((resolve, reject) => {
@@ -157,7 +223,7 @@ function requestDaemon(path, method = 'GET', body = null, timeoutMs = 2500) {
             try {
               resolve(raw ? JSON.parse(raw) : {});
             } catch (err) {
-              reject(new Error(`响应 JSON 解析失败: ${err.message}`));
+              reject(new Error(sidecarMsg(null, `响应 JSON 解析失败: ${err.message}`, `Response JSON parse failed: ${err.message}`)));
             }
           } else {
             let msg = `HTTP ${res.statusCode}`;
@@ -175,7 +241,7 @@ function requestDaemon(path, method = 'GET', body = null, timeoutMs = 2500) {
 
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error('请求守护进程超时'));
+      reject(new Error(sidecarMsg(null, '请求守护进程超时', 'Daemon request timed out')));
     });
 
     req.on('error', (err) => {
@@ -202,7 +268,26 @@ function readLocalState() {
 
 const app = new SidecarApp();
 
-app.page('/', () => readFileSync(join(__dirname, 'index.html'), 'utf-8'));
+app.page('/', () => {
+  const lang = readConfiguredLang();
+  const ui = getActiveUi(lang);
+  const bootstrapScript = `<script>window.__agentThingsLang=${JSON.stringify(lang)};window.__agentThingsI18n=${JSON.stringify({
+    lang,
+    labels: ui.labels,
+    taskLabels: ui.taskLabels,
+    colors: ui.colors,
+    strings: ui.strings,
+    locales: ui.locales,
+  })};</script>`;
+  let html = readFileSync(join(__dirname, 'index.html'), 'utf-8');
+  html = html.replace('<html lang="zh-CN">', `<html lang="${lang === 'en' ? 'en' : 'zh-CN'}">`);
+  html = html.replace(
+    '<title>Agent Things 会话任务进度 · 任务进展</title>',
+    `<title>${lang === 'en' ? `${ui.strings.defaultDocTitle} · ${ui.strings.docTitleSuffix}` : 'Agent Things 会话任务进度 · 任务进展'}</title>`
+  );
+  html = html.replace('<script src="/preload.js"></script>', `${bootstrapScript}\n  <script src="/preload.js"></script>`);
+  return html;
+});
 
 // 签发 SSE 票据
 app.api(
@@ -211,7 +296,7 @@ app.api(
     const convId = (params?.conversationId || app.config?.conversationId || '').trim();
     const creds = getCredentials();
     if (!creds?.port) {
-      return new Response(JSON.stringify({ error: '守护进程未就绪' }), { contentType: 'application/json', status: 500 });
+      return new Response(JSON.stringify({ error: sidecarMsg(null, '守护进程未就绪', 'Daemon not ready') }), { contentType: 'application/json', status: 500 });
     }
     try {
       const res = await requestDaemon('/session/ticket', 'POST', { conversationId: convId });
@@ -278,15 +363,17 @@ function getSessionFromState(convId) {
 app.api(
   '/api/session',
   async (params) => {
+    const lang = readConfiguredLang();
     const convId = (params?.conversationId || app.config?.conversationId || '').trim();
     if (!convId) {
-      return new Response(JSON.stringify({ error: '缺少会话标识' }), { contentType: 'application/json', status: 400 });
+      return new Response(JSON.stringify({ error: sidecarMsg(lang, '缺少会话标识', 'Missing conversation ID') }), { contentType: 'application/json', status: 400 });
     }
     try {
       const session = getSessionFromState(convId);
       const title = session?.title || resolveConversationTitle(convId) || null;
       return {
         ok: true,
+        lang,
         session,
         title,
       };
@@ -301,13 +388,14 @@ app.api(
 app.api(
   '/api/action',
   async (body) => {
+    const lang = readConfiguredLang();
     const convId = (body?.conversationId || '').trim();
     const action = body?.action;
     const payload = body?.payload || {};
     const key = JSON.stringify(['local', convId]);
 
     if (!convId || !action) {
-      return new Response(JSON.stringify({ error: '缺少会话标识或操作类型' }), { contentType: 'application/json', status: 400 });
+      return new Response(JSON.stringify({ error: sidecarMsg(lang, '缺少会话标识或操作类型', 'Missing conversation ID or action') }), { contentType: 'application/json', status: 400 });
     }
 
     try {
@@ -336,7 +424,7 @@ app.api(
         });
         return res;
       } else {
-        return new Response(JSON.stringify({ error: `未知操作: ${action}` }), { contentType: 'application/json', status: 400 });
+        return new Response(JSON.stringify({ error: sidecarMsg(lang, `未知操作: ${action}`, `Unknown action: ${action}`) }), { contentType: 'application/json', status: 400 });
       }
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { contentType: 'application/json', status: 500 });
@@ -346,19 +434,21 @@ app.api(
 );
 
 async function triggerHostLocate(convId, source) {
+  const lang = readConfiguredLang();
+  const ui = getActiveUi(lang);
   try {
     const portFile = join(homedir(), 'Library/Application Support/Antigravity/DevToolsActivePort');
     if (!existsSync(portFile)) {
-      return { located: false, message: '未检测到 Antigravity DevTools 端口' };
+      return { located: false, message: sidecarMsg(lang, '未检测到 Antigravity DevTools 端口', 'Antigravity DevTools port not detected') };
     }
     const port = Number(readFileSync(portFile, 'utf-8').split('\n')[0]);
     if (!port) {
-      return { located: false, message: 'Antigravity DevTools 端口无效' };
+      return { located: false, message: sidecarMsg(lang, 'Antigravity DevTools 端口无效', 'Invalid Antigravity DevTools port') };
     }
 
     const res = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(1500) });
     if (!res.ok) {
-      return { located: false, message: '无法连接 Antigravity 调试接口' };
+      return { located: false, message: sidecarMsg(lang, '无法连接 Antigravity 调试接口', 'Unable to connect to Antigravity DevTools') };
     }
     const targets = await res.json();
     const pageTargets = targets.filter(
@@ -370,12 +460,16 @@ async function triggerHostLocate(convId, source) {
       pageTargets.find((t) => t.url.includes('workbench')) ||
       pageTargets[0];
     if (!mainTarget?.webSocketDebuggerUrl) {
-      return { located: false, message: '未找到活动的 Antigravity 会话页面' };
+      return { located: false, message: sidecarMsg(lang, '未找到活动的 Antigravity 会话页面', 'Active Antigravity conversation page not found') };
     }
 
+    const locatedJumpText = ui.strings.locatedJumpMessage;
+    const locateNotFoundText = ui.strings.locateNotFound;
     const code = `(async () => {
       const convId = ${JSON.stringify(convId || '')};
       const source = ${JSON.stringify(source || {})};
+      const locatedMsg = ${JSON.stringify(locatedJumpText)};
+      const notFoundMsg = ${JSON.stringify(locateNotFoundText)};
       if (window.__sessionStatusHarness && typeof window.__sessionStatusHarness.locate === 'function') {
         const res = await window.__sessionStatusHarness.locate({
           entry: convId ? { threadId: convId } : {},
@@ -388,10 +482,10 @@ async function triggerHostLocate(convId, source) {
             located,
             method: res.method || 'harness',
             conversationId: res.conversationId || convId,
-            message: res.message || (located ? '已跳转并定位到会话来源' : '未找到对应会话消息'),
+            message: res.message || (located ? locatedMsg : notFoundMsg),
           };
         }
-        return { located: Boolean(res), method: 'harness', message: res ? '已跳转并定位到会话来源' : '未找到对应会话消息' };
+        return { located: Boolean(res), method: 'harness', message: res ? locatedMsg : notFoundMsg };
       }
 
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -472,10 +566,10 @@ async function triggerHostLocate(convId, source) {
         }
       }
       if (!target) {
-        return { located: false, method: 'fallback', message: '未在当前或历史消息中找到对应来源' };
+        return { located: false, method: 'fallback', message: notFoundMsg };
       }
       highlight(target);
-      return { located: true, method: 'fallback', message: '已跳转并定位到会话来源' };
+      return { located: true, method: 'fallback', message: locatedMsg };
     })()`;
 
     const ws = new WebSocket(mainTarget.webSocketDebuggerUrl);
@@ -489,7 +583,7 @@ async function triggerHostLocate(convId, source) {
         resolve(payload);
       };
       const timer = setTimeout(() => {
-        done({ located: false, message: '定位会话来源超时' });
+        done({ located: false, message: ui.strings.locateTimeout });
       }, 15000);
       ws.addEventListener('open', () => {
         ws.send(JSON.stringify({
@@ -503,7 +597,7 @@ async function triggerHostLocate(convId, source) {
           const msg = JSON.parse(String(event.data || ''));
           if (msg.id !== 1) return;
           if (msg.error || msg.result?.exceptionDetails) {
-            const detail = msg.error?.message || msg.result?.exceptionDetails?.text || '执行定位脚本失败';
+            const detail = msg.error?.message || msg.result?.exceptionDetails?.text || sidecarMsg(lang, '执行定位脚本失败', 'Locate script failed');
             done({ located: false, message: detail });
             return;
           }
@@ -513,23 +607,23 @@ async function triggerHostLocate(convId, source) {
               located: Boolean(val.located),
               method: val.method || 'cdp',
               conversationId: val.conversationId || convId,
-              message: val.message || (val.located ? '已跳转并定位到会话来源' : '未找到对应会话消息'),
+              message: val.message || (val.located ? locatedJumpText : locateNotFoundText),
             });
           } else {
-            done({ located: Boolean(val), message: val ? '已跳转并定位到会话来源' : '未找到对应会话消息' });
+            done({ located: Boolean(val), message: val ? locatedJumpText : locateNotFoundText });
           }
         } catch (parseErr) {
-          done({ located: false, message: parseErr.message || '解析定位响应失败' });
+          done({ located: false, message: parseErr.message || sidecarMsg(lang, '解析定位响应失败', 'Failed to parse locate response') });
         }
       });
       ws.addEventListener('error', (err) => {
-        done({ located: false, message: err?.message || 'CDP WebSocket 连接失败' });
+        done({ located: false, message: err?.message || sidecarMsg(lang, 'CDP WebSocket 连接失败', 'CDP WebSocket connection failed') });
       });
     });
     return result;
   } catch (err) {
     console.warn('[things_board] triggerHostLocate notice:', err.message);
-    return { located: false, message: err.message || '定位执行异常' };
+    return { located: false, message: err.message || sidecarMsg(lang, '定位执行异常', 'Locate execution error') };
   }
 }
 
@@ -537,6 +631,7 @@ async function triggerHostLocate(convId, source) {
 app.api(
   '/api/locate',
   async (body) => {
+    const ui = getActiveUi();
     const convId = (body?.conversationId || app.config?.conversationId || '').trim();
     const source = body?.source || {};
     const result = await triggerHostLocate(convId, source);
@@ -544,7 +639,7 @@ app.api(
       ok: true,
       located: Boolean(result?.located),
       success: Boolean(result?.located),
-      message: result?.message || (result?.located ? '已跳转并定位到会话来源' : '未找到对应会话消息'),
+      message: result?.message || (result?.located ? ui.strings.locatedJumpMessage : ui.strings.locateNotFound),
       method: result?.method || null,
       conversationId: result?.conversationId || convId,
     };

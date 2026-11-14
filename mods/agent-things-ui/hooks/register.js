@@ -1,14 +1,17 @@
 import { progressState } from './progress.js';
-import { draftTransition } from './foundation.js';
-import { CONTENT_WIDTH, NOTE_LINE_WIDTH, labels, colors, taskLabels, date, svg, headerRing, headerTitleSpec, statusBadgeSvg, timeTextSvg, scoreSvg, bar, preview, wrapText } from './presentation.js';
+import { draftTransition, forLang } from './foundation.js';
+import { CONTENT_WIDTH, NOTE_LINE_WIDTH, colors, date, svg, headerRing, headerTitleSpec, statusBadgeSvg, timeTextSvg, scoreSvg, bar, preview, wrapText, measureButtonWidth, measureClearWidth, paneIconWidth } from './presentation.js';
 
-let sessionId, cwd, home, data = null, projectGit = null, updateInfo = null;
+let sessionId, cwd, home, data = null, projectGit = null, updateInfo = null, activeLang = 'zh', configLangLoaded = false;
 let mode = 'overview', draft = null, baseRevision = 0, busy = false, error = '', source = null, sourceMode = 'overview';
 let conflict = false, loading = false, refreshPromise = null;
 let expanded = false, noteOpen = false, seen = false, sequence = 0, paneRequested = false, waitLoop = 0;
 const PANE = 'agent-things', PANE_TITLE = 'Agent Things', PINNED = 'pane:pinned';
 const SIDEBAR_HINT_DISMISSED = 'sidebar-hint:dismissed';
 const FIRST_PAINT_WAIT_MS = 80;
+
+const ui = () => forLang(activeLang);
+const t = (key, vars) => ui().t(key, vars);
 
 async function request($, action, fields = {}) {
   home ||= await $.env.get('HOME');
@@ -18,10 +21,12 @@ async function request($, action, fields = {}) {
     body: JSON.stringify({ action, sessionId, cwd, requestId: `inline-${sessionId}-${++sequence}`, ...fields }),
   });
   const value = JSON.parse(response.text);
-  if (!response.ok || value.error) throw Object.assign(new Error(value.error || '本地后台连接失败'), value.errorInfo || {});
+  if (value?.lang === 'en' || value?.lang === 'zh') activeLang = value.lang;
+  if (!response.ok || value.error) throw Object.assign(new Error(value.error || t('claudeInlineOffline')), value.errorInfo || {});
   return value;
 }
 function receive(value) {
+  if (value?.lang === 'en' || value?.lang === 'zh') activeLang = value.lang;
   if ('updateInfo' in value) { updateInfo = value.updateInfo; return; }
   if ((!data && 'revision' in value) || (data && value.revision >= data.revision)) data = value;
   if (value.paneRequested) paneRequested = true;
@@ -58,7 +63,7 @@ async function watchChanges($) {
       if (token !== waitLoop) return;
       offline = true;
       // 旧版后台没有 watch：退回每 2 秒补读。
-      await $.clock.sleep(/未知卡片操作/.test(failure.message) ? 2000 : 1000);
+      await $.clock.sleep(/(未知卡片操作|Unknown card action)/i.test(failure.message) ? 2000 : 1000);
     }
   }
 }
@@ -87,7 +92,7 @@ async function setDraft($, patch) {
 }
 async function setProgress($, value) {
   if (value !== null && (!Number.isInteger(value) || value < 0 || value > 100)) {
-    error = '请输入 0–100 的整数，或留空'; $.ui.invalidate('ui.render'); return;
+    error = t('invalidProgressError'); $.ui.invalidate('ui.render'); return;
   }
   await setDraft($, { progress: value, state: progressState(draft.state, value) });
 }
@@ -102,7 +107,7 @@ async function operate($, action, fields = {}) {
       try { located = await request($, 'locate', { taskId: fields.taskId }); }
       catch (failure) { sourceMode = mode; mode = 'source'; throw failure; }
       if (!located.navigation?.located) {
-        sourceMode = mode; mode = 'source'; error = located.navigation?.message || '暂时无法定位来源消息';
+        sourceMode = mode; mode = 'source'; error = located.navigation?.message || t('locateUnavailable');
       }
     }
   } catch (failure) {
@@ -118,12 +123,20 @@ async function rebaseDraft($) {
     await refresh($);
     const state = draftTransition({ draft, baseRevision, conflict }, { type: 'rebase', revision: data?.session?.recordRevision ?? data?.record?.revision ?? 0 });
     baseRevision = state.baseRevision; conflict = false;
-    error = '已读取最新版本，草稿已保留。再次保存即可提交。';
+    error = t('conflictReloadedFeedback');
     await remember($);
   } catch (failure) { error = failure.message; }
   finally { busy = false; $.ui.invalidate('ui.render'); }
 }
 async function ensureContext($) {
+  if (!configLangLoaded) {
+    configLangLoaded = true;
+    try {
+      home ||= await $.env.get('HOME');
+      const cfg = JSON.parse(await $.fs.read(`${home}/Library/Application Support/AgentThings/config.json`));
+      if (cfg?.lang === 'en' || cfg?.lang === 'zh') activeLang = cfg.lang;
+    } catch {}
+  }
   if (sessionId) return;
   sessionId = await $.session.id(); cwd = await $.session.cwd();
   const saved = await $.store.get(`view:${sessionId}`);
@@ -166,7 +179,7 @@ async function initialize($) {
 export function register(on) {
   on('session.start', async ($, e, next) => {
     await initialize($);
-    await $.command.register({ name: 'things', description: '打开会话任务进度卡片', immediate: true });
+    await $.command.register({ name: 'things', description: t('cardCommandDescription'), immediate: true });
     if (paneRequested || await $.store.get(PINNED)) { seen = true; paneRequested = false; void $.ui.open({ id: PANE, title: PANE_TITLE }); }
     void watchChanges($);
     // 账本同步由 watchChanges 负责；这里只跟进升级进度。
@@ -186,7 +199,7 @@ export function register(on) {
       loading = true;
       await raceWithin($, pending, FIRST_PAINT_WAIT_MS);
     }
-    return { text: 'Agent Things · 会话任务进度' };
+    return { text: t('cardCommandReply') };
   });
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE && e.origin.kind === 'person') await $.store.set(PINNED, false).catch(() => {});
@@ -218,6 +231,7 @@ export function register(on) {
 
 async function draw($, e, inPane) {
     seen = true;
+    const { labels, taskLabels, strings } = ui();
     const { Box, Text, Button, Input, Svg, Client } = $.ui.resolve(e);
     const record = data?.record?.state ? data.record : null;
     const tasks = data?.analysis?.ledger?.tasks || [];
@@ -230,8 +244,9 @@ async function draw($, e, inPane) {
     const text = (value, props = {}) => Text({ children: [String(value)], ...props });
     const button = (key, label, callback, props = {}) => Button({ key, label, onPress: callback, ...props });
     const row = children => Box({ flexDirection: 'row', alignItems: 'center', width: '100%', gap: 1, children });
-    const rule = () => Svg({ source: svg(`<path d="M0 1H${viewWidth}" stroke="currentColor" opacity=".14"/>`, viewWidth, 2), alt: '分隔线', width: 4096, height: 2 });
+    const rule = () => Svg({ source: svg(`<path d="M0 1H${viewWidth}" stroke="currentColor" opacity=".14"/>`, viewWidth, 2), alt: t('dividerAlt'), width: 4096, height: 2 });
     const trailing = child => Box({ flexGrow: 1, justifyContent: 'flex-end', alignItems: 'center', children: [child] });
+    const colWidthFor = (px, minCols = 8.6) => Math.max(minCols, Math.ceil((px / 9.3) * 10) / 10);
     const control = (key, props, width = 8.6) => Box({ width, children: [
       Client({ key, module: './controls.js', width: '100%', height: props.action === 'clear' ? 1.4 : 1.8, props }),
     ] });
@@ -246,45 +261,46 @@ async function draw($, e, inPane) {
       ] }),
     ]);
     const taskLabelWidth = Math.max(60, Math.min(200, viewWidth - 28));
+    const unknownTaskLabel = taskLabels.unknown || t('taskLabels')?.unknown || (activeLang === 'en' ? 'Unknown status' : '状态未知');
     const taskRow = task => Box({ key: `task-${task.id}`, position: 'relative', flexDirection: 'row', alignItems: 'center', width: '100%', gap: 1, children: [
       text(task.status === 'done' ? '✓' : '○', { color: task.status === 'done' ? colors.completed : colors.unfinished }),
-      Box({ flexDirection: 'column', flexGrow: 1, minWidth: 0, children: [text(task.summary || task.title), Svg({ source: svg(`<text x="0" y="11" font-size="10" fill="currentColor" opacity=".68">${taskLabels[task.status] || '状态未知'}</text>`, taskLabelWidth, 15, 'xMinYMid meet'), alt: taskLabels[task.status] || '状态未知', width: taskLabelWidth, height: 15 })] }),
-      Box({ position: 'absolute', right: 0, top: 0, height: '100%', justifyContent: 'center', alignItems: 'flex-end', display: 'none', hover: { display: 'flex' }, children: [button(`source-${task.id}`, '查看来源', () => operate($, 'source', { taskId: task.id }), { plain: true })] }),
+      Box({ flexDirection: 'column', flexGrow: 1, minWidth: 0, children: [text(task.summary || task.title), Svg({ source: svg(`<text x="0" y="11" font-size="10" fill="currentColor" opacity=".68">${taskLabels[task.status] || unknownTaskLabel}</text>`, taskLabelWidth, 15, 'xMinYMid meet'), alt: taskLabels[task.status] || unknownTaskLabel, width: taskLabelWidth, height: 15 })] }),
+      Box({ position: 'absolute', right: 0, top: 0, height: '100%', justifyContent: 'center', alignItems: 'flex-end', display: 'none', hover: { display: 'flex' }, children: [button(`source-${task.id}`, t('viewSource'), () => operate($, 'source', { taskId: task.id }), { plain: true })] }),
     ] });
     const content = [];
     const skeletonLoading = !data && (loading || Boolean(refreshPromise));
     const titleReserve = inPane ? 0 : 34;
     const titleMaxWidth = Math.max(64, viewWidth - 42 - titleReserve);
-    const titleText = data?.title || '会话进度';
+    const titleText = data?.title || t('fallbackShortTitle');
     const titleSpec = headerTitleSpec(titleText, titleMaxWidth);
     content.push(Box({ flexDirection: 'row', alignItems: 'flex-start', width: '100%', gap: 1, children: [
-      Box({ flexShrink: 0, children: [Svg({ source: headerRing(record, Boolean(active || skeletonLoading)), alt: `${record?.progress ?? '未记录'}%`, width: 32, height: 34, isInteractive: true })] }),
+      Box({ flexShrink: 0, children: [Svg({ source: headerRing(record, Boolean(active || skeletonLoading)), alt: `${record?.progress ?? t('progressUnrecordedWord')}%`, width: 32, height: 34, isInteractive: true })] }),
       Box({ flexGrow: 1, flexShrink: 1, minWidth: 0, children: [Svg({ source: titleSpec.source, alt: titleText, width: titleSpec.width, height: titleSpec.height })] }),
     ] }));
     if (!data && mode === 'overview') {
       if (skeletonLoading) {
-        content.push(statusRow({ dotColor: 'currentColor', dotOpacity: '.35', label: '正在读取会话进度…', labelOpacity: '.82', score: null, scoreAlt: '加载中', scoreOpacity: '.35' }));
-        content.push(Svg({ source: bar(0, colors.unstarted, viewWidth), alt: '加载中', width: 4096, height: 4 }));
+        content.push(statusRow({ dotColor: 'currentColor', dotOpacity: '.35', label: t('loadingTitle'), labelOpacity: '.82', score: null, scoreAlt: t('loadingAlt'), scoreOpacity: '.35' }));
+        content.push(Svg({ source: bar(0, colors.unstarted, viewWidth), alt: t('loadingAlt'), width: 4096, height: 4 }));
         const barW1 = Math.max(40, Math.round(viewWidth * 0.53));
         const barW2 = Math.max(40, Math.round(viewWidth * 0.77));
         const barW3 = Math.max(40, Math.round(viewWidth * 0.65));
-        content.push(Svg({ source: svg(`<rect x="0" y="2" width="${barW1}" height="10" rx="5" fill="currentColor" opacity=".12"/><rect x="0" y="20" width="${barW2}" height="10" rx="5" fill="currentColor" opacity=".08"/><rect x="0" y="38" width="${barW3}" height="10" rx="5" fill="currentColor" opacity=".08"/>`, viewWidth, 52, 'xMinYMid meet'), alt: '正在加载任务列表', width: viewWidth, height: 52 }));
-        content.push(text('正在同步当前会话任务，完成后将自动更新…', { size: 'footnote', dimColor: true }));
+        content.push(Svg({ source: svg(`<rect x="0" y="2" width="${barW1}" height="10" rx="5" fill="currentColor" opacity=".12"/><rect x="0" y="20" width="${barW2}" height="10" rx="5" fill="currentColor" opacity=".08"/><rect x="0" y="38" width="${barW3}" height="10" rx="5" fill="currentColor" opacity=".08"/>`, viewWidth, 52, 'xMinYMid meet'), alt: t('loadingTasksAlt'), width: viewWidth, height: 52 }));
+        content.push(text(t('loadingSubtitle'), { size: 'footnote', dimColor: true }));
       } else {
-        content.push(statusRow({ dotColor: 'currentColor', dotOpacity: '.45', label: '尚未读取到会话进度', score: null, scoreAlt: '未读取', scoreOpacity: '.45' }));
-        content.push(Svg({ source: bar(0, colors.unstarted, viewWidth), alt: '未读取', width: 4096, height: 4 }));
-        content.push(row([button('retry-load', '重试读取', () => { loading = true; error = ''; $.ui.invalidate('ui.render'); void startRefresh($); })]));
+        content.push(statusRow({ dotColor: 'currentColor', dotOpacity: '.45', label: t('notLoadedTitle'), score: null, scoreAlt: t('notLoadedAlt'), scoreOpacity: '.45' }));
+        content.push(Svg({ source: bar(0, colors.unstarted, viewWidth), alt: t('notLoadedAlt'), width: 4096, height: 4 }));
+        content.push(row([button('retry-load', t('retryLoadBtn'), () => { loading = true; error = ''; $.ui.invalidate('ui.render'); void startRefresh($); })]));
       }
     } else if (mode === 'source' && source) {
-      content.push(button('source-back', '返回', () => view($, sourceMode), { plain: true }));
+      content.push(button('source-back', t('backPlain'), () => view($, sourceMode), { plain: true }));
       content.push(text(source.title, { bold: true }), text(date(source.occurredAt), { dimColor: true }));
-      content.push(text(source.text || source.locator || '此记录没有可显示的原文'));
+      content.push(text(source.text || source.locator || t('emptySourceText')));
     } else if (mode === 'completed') {
-      content.push(row([text('已完成任务', { bold: true }), trailing(button('completed-back', '‹ 返回', () => view($, 'overview'), { plain: true, dimColor: true }))]));
+      content.push(row([text(t('completedHeading'), { bold: true }), trailing(button('completed-back', t('backLabel'), () => view($, 'overview'), { plain: true, dimColor: true }))]));
       content.push(...completed.map(taskRow));
-      if (!completed.length) content.push(text('暂无已完成任务', { dimColor: true }));
+      if (!completed.length) content.push(text(t('emptyCompleted'), { dimColor: true }));
     } else if (mode === 'edit' && draft) {
-      content.push(Box({ paddingTop: 1.5, paddingBottom: 1, children: [text('手动记录会话状态', { bold: true })] }));
+      content.push(Box({ paddingTop: 1.5, paddingBottom: 1, children: [text(t('editHeading'), { bold: true })] }));
       for (const [state, label] of Object.entries(labels)) {
         if (state === 'pushed' && !projectGit?.hasRemote) continue;
         content.push(Box({ flexDirection: 'row', width: '100%', alignItems: 'center', gap: 1, paddingX: 1, paddingY: .75,
@@ -295,64 +311,72 @@ async function draw($, e, inPane) {
             }), { plain: true })] }));
       }
       content.push(Box({ paddingTop: 2, children: [Client({ key: 'progress-slider', module: './controls.js', width: '100%', height: 5.5,
-        props: { kind: 'slider', value: draft.progress, state: draft.state } })] }));
-      content.push(row([trailing(button('clear-percentage', '清空进度', () => setProgress($, null), { plain: true, dimColor: true }))]));
-      content.push(text('备注', { size: 'footnote', dimColor: true }));
-      content.push(Input({ key: 'note-input', value: draft.note, rows: 3, placeholder: '记下下一步要做的事…',
+        props: { kind: 'slider', value: draft.progress, state: draft.state, width: viewWidth, progressLabel: t('progressLabel'), unrecordedWord: t('progressUnrecordedWord') } })] }));
+      content.push(row([trailing(button('clear-percentage', t('clearValueBtn'), () => setProgress($, null), { plain: true, dimColor: true }))]));
+      content.push(text(t('notesLabel'), { size: 'footnote', dimColor: true }));
+      content.push(Input({ key: 'note-input', value: draft.note, rows: 3, placeholder: t('notePlaceholder'),
         onInput: value => setDraft($, { note: value }), onSubmit: value => setDraft($, { note: value }) }));
-      content.push(row([trailing(button('cancel', '取消', async () => { draft = null; await view($, 'overview'); }, { plain: true })),
-        control('save', { kind: 'button', action: 'save', disabled: busy, label: busy ? '正在保存…' : '保存记录' })]));
-      if (conflict) content.push(button('resolve-conflict', '读取最新版本并保留草稿', () => rebaseDraft($), { plain: true }));
+      const saveLabel = busy ? t('savingBtn') : t('saveBtn');
+      const saveWidthCols = colWidthFor(measureButtonWidth(saveLabel), 8.6);
+      content.push(row([trailing(button('cancel', t('cancelBtn'), async () => { draft = null; await view($, 'overview'); }, { plain: true })),
+        control('save', { kind: 'button', action: 'save', disabled: busy, label: saveLabel }, saveWidthCols)]));
+      if (conflict) content.push(button('resolve-conflict', t('resolveConflictBtn'), () => rebaseDraft($), { plain: true }));
     } else {
-      content.push(statusRow({ dotColor: color, label: labels[record?.state] || '尚未记录进展', timeLabel: date(record?.updatedAt), score: record?.progress, scoreAlt: `${record?.progress ?? '未记录'}%` }));
-      content.push(Svg({ source: bar(record?.progress, color, viewWidth), alt: '当前进度', width: 4096, height: 4 }));
-      content.push(row([text(tasks.length ? `已完成 ${completed.length} / ${tasks.length} 项任务` : '暂无任务统计', { size: 'footnote', dimColor: true }), trailing(text(record?.source === 'analysis' ? '自动分析' : record ? '手动调整' : '', { size: 'footnote', dimColor: true }))]));
+      content.push(statusRow({ dotColor: color, label: labels[record?.state] || t('unrecordedSummary'), timeLabel: date(record?.updatedAt), score: record?.progress, scoreAlt: `${record?.progress ?? t('progressUnrecordedWord')}%` }));
+      content.push(Svg({ source: bar(record?.progress, color, viewWidth), alt: t('currentProgressAlt'), width: 4096, height: 4 }));
+      content.push(row([text(tasks.length ? t('totalsPattern', { done: completed.length, total: tasks.length }) : t('noTasksYet'), { size: 'footnote', dimColor: true }), trailing(text(record?.source === 'analysis' ? t('sourceAuto') : record ? t('sourceManual') : '', { size: 'footnote', dimColor: true }))]));
       const noteMaxWidth = inPane ? Math.max(100, viewWidth - 16) : NOTE_LINE_WIDTH;
       const wrappedNote = record?.note ? wrapText(record.note, noteMaxWidth) : '';
       const previewNote = record?.note ? preview(record.note, noteMaxWidth) : '';
       if (record?.note) content.push(Box({ width: '100%', flexDirection: 'column', children: [text(noteOpen ? wrappedNote : previewNote, { dimColor: true })] }));
-      if (record?.note && previewNote !== wrappedNote) content.push(button('expand-note', noteOpen ? '收起' : '查看全部', () => { noteOpen = !noteOpen; $.ui.invalidate('ui.render'); }, { plain: true, dimColor: true }));
+      if (record?.note && previewNote !== wrappedNote) content.push(button('expand-note', noteOpen ? t('collapse') : t('expandAll'), () => { noteOpen = !noteOpen; $.ui.invalidate('ui.render'); }, { plain: true, dimColor: true }));
+      const analyzeLabel = active ? t('btnUpdating') : t('btnUpdate');
+      const analyzeWidthCols = colWidthFor(measureButtonWidth(analyzeLabel), 8.6);
+      const clearLabel = t('btnClear');
+      const clearWidthCols = colWidthFor(measureClearWidth(clearLabel), 6.9);
       content.push(row([
-        control('analyze', { kind: 'button', action: 'analyze', disabled: Boolean(active) || busy, label: active ? '正在分析…' : '更新进度' }),
-        button('edit', '手动调整', () => edit($), { plain: true, dimColor: true }),
-        trailing(control('clear', { kind: 'button', action: 'clear', disabled: busy, label: '清除进度' }, 6.9)),
+        control('analyze', { kind: 'button', action: 'analyze', disabled: Boolean(active) || busy, label: analyzeLabel }, analyzeWidthCols),
+        button('edit', t('btnAdjust'), () => edit($), { plain: true, dimColor: true }),
+        trailing(control('clear', { kind: 'button', action: 'clear', disabled: busy, label: clearLabel }, clearWidthCols)),
       ]));
-      if (active) content.push(text(({ starting: '正在启动分析…', reading: '正在读取会话…', analyzing: '正在分析任务…', retrying: '正在重新连接…' })[active.stage] || '正在分析…', { dimColor: true }));
+      if (active) content.push(text(strings.analysisStages?.[active.stage] || strings.analysisStages?.analyzing || t('btnUpdating'), { dimColor: true }));
       const failed = data?.timeline?.at(-1);
-      if (!active && failed?.status === 'failed') content.push(text(`分析失败：${failed.error || '请重试'}`, { color: '#D43F3F' }));
+      if (!active && failed?.status === 'failed') content.push(text(`${t('analysisFailedPrefix')}${failed.error || t('analysisFailedRetry')}`, { color: '#D43F3F' }));
       content.push(rule());
-      const remainingHead = [text(`剩余任务 ${remaining.length}`, { bold: true })];
-      if (remaining.length > 3) remainingHead.push(trailing(button('expand-remaining', expanded ? '收起 ›' : `查看全部 ${remaining.length} 条 ›`, async () => { expanded = !expanded; await remember($); $.ui.invalidate('ui.render'); }, { plain: true, dimColor: true })));
+      const remainingHead = [text(t('remainingHeadingPattern', { count: remaining.length }), { bold: true })];
+      if (remaining.length > 3) remainingHead.push(trailing(button('expand-remaining', expanded ? t('collapseArrow') : t('showAllCountPattern', { count: remaining.length }), async () => { expanded = !expanded; await remember($); $.ui.invalidate('ui.render'); }, { plain: true, dimColor: true })));
       content.push(row(remainingHead));
       content.push(...(expanded ? remaining : remaining.slice(0, 3)).map(taskRow));
-      if (!remaining.length) content.push(text(tasks.length ? '暂无未完成任务' : '点击更新进度，整理这次会话的任务', { dimColor: true }));
+      if (!remaining.length) content.push(text(tasks.length ? t('emptyNoRemaining') : t('emptyNoTasks'), { dimColor: true }));
       content.push(rule());
-      content.push(row([button('completed-label', '已完成任务', () => view($, 'completed'), { plain: true }), trailing(button('completed', `${completed.length} 条 ›`, () => view($, 'completed'), { plain: true, dimColor: true }))]));
+      content.push(row([button('completed-label', t('completedHeading'), () => view($, 'completed'), { plain: true }), trailing(button('completed', t('countArrowPattern', { count: completed.length }), () => view($, 'completed'), { plain: true, dimColor: true }))]));
       content.push(rule());
-      content.push(row([button('note-label', '备注', () => edit($), { plain: true }), trailing(button('edit-note', record?.note ? '编辑' : '添加', () => edit($), { plain: true, dimColor: true }))]));
+      content.push(row([button('note-label', t('notesLabel'), () => edit($), { plain: true }), trailing(button('edit-note', record?.note ? t('editLabel') : t('addLabel'), () => edit($), { plain: true, dimColor: true }))]));
       const updating = ['queued', 'checking', 'downloading', 'waiting', 'installing'].includes(updateInfo?.update?.stage);
-      if (updating) content.push(text('正在升级…', { dimColor: true }));
-      else if (updateInfo?.available) content.push(row([text(`发现新版本 ${updateInfo.latestVersion || ''}`), trailing(button('upgrade', '立即升级', () => operate($, 'upgrade')))]));
-      if (updateInfo?.update?.stage === 'failed') content.push(text(`升级失败：${updateInfo.update.error || updateInfo.command}`, { color: '#D43F3F' }));
+      if (updating) content.push(text(t('upgradingShort'), { dimColor: true }));
+      else if (updateInfo?.available) content.push(row([text(t('updateAvailablePattern', { version: updateInfo.latestVersion || '' })), trailing(button('upgrade', t('upgradeBtn'), () => operate($, 'upgrade')))]));
+      if (updateInfo?.update?.stage === 'failed') content.push(text(`${t('updateFailedLabel')}: ${updateInfo.update.error || updateInfo.command}`, { color: '#D43F3F' }));
     }
     if (error) content.push(Box({ width: '100%', flexDirection: 'column', children: [text(wrapText(error, inPane ? Math.max(100, viewWidth - 16) : NOTE_LINE_WIDTH), { color: '#D43F3F' })] }));
-    if (mode === 'edit' && error.includes('其他窗口')) content.push(button('reload-version', '保留草稿，读取最新版本', async () => {
+    if (mode === 'edit' && (conflict || error.includes('其他窗口') || error.includes('another window'))) content.push(button('reload-version', t('resolveConflictBtn'), async () => {
       try { await refresh($); baseRevision = data.record?.revision || 0; error = ''; await remember($); }
       catch (failure) { error = failure.message; }
       $.ui.invalidate('ui.render');
     }));
-    if (busy) content.push(text('正在处理…', { dimColor: true }));
+    if (busy) content.push(text(t('processing'), { dimColor: true }));
     if (mode === 'overview' && !await $.store.get(SIDEBAR_HINT_DISMISSED)) {
-      content.push(rule(), text('如需启用侧边栏插件，请打开「开发者 → Enable Main Process Debugger」。', { size: 'footnote', dimColor: true }));
-      content.push(row([trailing(button('dismiss-sidebar-hint', '不再提醒', async () => {
+      content.push(rule(), text(t('sidebarHintText'), { size: 'footnote', dimColor: true }));
+      content.push(row([trailing(button('dismiss-sidebar-hint', t('dismissHint'), async () => {
         await $.store.set(SIDEBAR_HINT_DISMISSED, true);
         $.ui.invalidate('ui.render');
       }, { plain: true, dimColor: true }))]));
     }
     if (inPane) return Box({ key: 'things-pane', flexDirection: 'column', gap: 1, paddingX: 1, paddingTop: 1, paddingBottom: 1.75, width: '100%', children: content });
     // 右上角「在侧栏打开」图标，与侧栏弹窗关闭按钮左侧的图标一致。
-    content.push(Box({ position: 'absolute', top: 0, right: 1, paddingTop: 0.5, width: 11.2, height: 1.9, children: [
-      Client({ key: 'open-pane', module: './controls.js', width: '100%', height: 1.4, props: { kind: 'icon', action: 'open-pane', label: '在侧栏打开' } }),
+    const openPaneLabel = t('openInSidebar');
+    const openPaneWidthCols = colWidthFor(paneIconWidth(openPaneLabel), 11.2);
+    content.push(Box({ position: 'absolute', top: 0, right: 1, paddingTop: 0.5, width: openPaneWidthCols, height: 1.9, children: [
+      Client({ key: 'open-pane', module: './controls.js', width: '100%', height: 1.4, props: { kind: 'icon', action: 'open-pane', label: openPaneLabel } }),
     ] }));
     return Box({ key: 'things-card', position: 'relative', flexDirection: 'column', gap: 1, paddingX: 2.5, paddingTop: 2.75, paddingBottom: 1.75, width: 36.5, borderStyle: 'round', borderDimColor: true, children: content });
 }

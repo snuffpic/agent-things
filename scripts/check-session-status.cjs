@@ -229,11 +229,15 @@ async function main() {
     assert.equal(await run(`${panel}.querySelectorAll('.current-tasks .task-row').length`), 3);
     assert.equal(await run(`${panel}.querySelector('.source-label').textContent`), '自动分析');
     assert.equal(await run(`(()=>{const a=${panel}.querySelector('.totals'),b=${panel}.querySelector('.source-label'),sa=getComputedStyle(a),sb=getComputedStyle(b);return sa.fontSize===sb.fontSize&&sa.fontWeight===sb.fontWeight&&sa.lineHeight===sb.lineHeight&&Math.abs(a.getBoundingClientRect().top-b.getBoundingClientRect().top)<.5})()`), true, 'Totals and source share type and vertical alignment');
-    await waitFor(async () => await run(`${panel}.querySelector('.current-tasks .task-title').classList.contains('overflowing')`), undefined, () => run(`(async () => {
+    await run(`(() => { const p = window.__checkProbe = { raf: 0, timer: 0, startedAt: Date.now() };
+      const loop = () => { p.raf++; requestAnimationFrame(loop); }; requestAnimationFrame(loop);
+      setInterval(() => { p.timer++; }, 100); })()`);
+    await waitFor(async () => await run(`${panel}.querySelector('.current-tasks .task-title').classList.contains('overflowing')`), undefined, () => run(`(() => {
       const title = ${panel}.querySelector('.current-tasks .task-title');
       const copy = title?.firstElementChild?.firstElementChild;
-      const frame = await Promise.race([new Promise(resolve => requestAnimationFrame(() => resolve('fired'))), new Promise(resolve => setTimeout(() => resolve('not fired in 2s'), 2000))]);
-      return { frame, visibility: document.visibilityState, dpr: devicePixelRatio, innerWidth, titleText: copy?.textContent,
+      const probe = window.__checkProbe;
+      return { rafCallbacks: probe?.raf, timerCallbacks: probe?.timer, elapsedMs: probe && Date.now() - probe.startedAt,
+        visibility: document.visibilityState, hasFocus: document.hasFocus(), dpr: devicePixelRatio, innerWidth, titleText: copy?.textContent,
         titleClientWidth: title?.clientWidth, copyWidth: copy?.getBoundingClientRect().width,
         maskWidth: title?.closest('.task-row')?.querySelector('.task-source')?.offsetWidth,
         className: title?.className, travel: title?.style.getPropertyValue('--travel'),

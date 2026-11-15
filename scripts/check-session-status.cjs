@@ -18,7 +18,11 @@ async function main() {
   await new Promise(resolve => server.close(resolve));
   const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
     '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${temporary}/chrome`,
-    '--no-first-run', '--no-default-browser-check', '--disable-background-networking', 'about:blank'
+    '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
+    // Keep every tab rendering as if visible: on hosted Intel runners Chrome reported the page as hidden,
+    // so requestAnimationFrame never fired and timers were throttled to once a second.
+    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling',
+    'about:blank'
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   let chromeLog = '';
   chrome.stderr.on('data', data => { chromeLog = (chromeLog + data).slice(-3000); });
@@ -63,6 +67,9 @@ async function main() {
       agent.sessions.set(target.id, session);
       await session.request('Emulation.setDeviceMetricsOverride', { width: 1050, height: 760, deviceScaleFactor: 2, mobile: false });
       await session.request('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+      // Headless Chrome may leave a new target as a hidden background tab (seen on Intel runners), where
+      // requestAnimationFrame never fires; activate it so frame-driven layout runs as in a visible window.
+      await session.request('Page.bringToFront');
       return session;
     };
     const one = await create();

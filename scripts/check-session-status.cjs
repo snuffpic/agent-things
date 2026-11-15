@@ -42,13 +42,15 @@ async function main() {
     return handleMessage(session, payload);
   };
   // Hosted CI runners (especially Intel) can take well over 6 s to paint a frame under load.
-  const waitFor = async (predicate, timeout = process.env.CI ? 20000 : 6000) => {
+  const waitFor = async (predicate, timeout = process.env.CI ? 20000 : 6000, describe = null) => {
     const end = Date.now() + timeout;
     while (Date.now() < end) {
       if (await predicate()) return;
       await new Promise(resolve => setTimeout(resolve, 30));
     }
-    throw new Error('Browser check timed out');
+    let detail = '';
+    if (describe) { try { detail = `\n${JSON.stringify(await describe(), null, 2)}`; } catch (error) { detail = `\n(diagnostics failed: ${error.message})`; } }
+    throw new Error(`Browser check timed out${detail}`);
   };
   try {
     await waitFor(async () => {
@@ -227,7 +229,17 @@ async function main() {
     assert.equal(await run(`${panel}.querySelectorAll('.current-tasks .task-row').length`), 3);
     assert.equal(await run(`${panel}.querySelector('.source-label').textContent`), '自动分析');
     assert.equal(await run(`(()=>{const a=${panel}.querySelector('.totals'),b=${panel}.querySelector('.source-label'),sa=getComputedStyle(a),sb=getComputedStyle(b);return sa.fontSize===sb.fontSize&&sa.fontWeight===sb.fontWeight&&sa.lineHeight===sb.lineHeight&&Math.abs(a.getBoundingClientRect().top-b.getBoundingClientRect().top)<.5})()`), true, 'Totals and source share type and vertical alignment');
-    await waitFor(async () => await run(`${panel}.querySelector('.current-tasks .task-title').classList.contains('overflowing')`));
+    await waitFor(async () => await run(`${panel}.querySelector('.current-tasks .task-title').classList.contains('overflowing')`), undefined, () => run(`(async () => {
+      const title = ${panel}.querySelector('.current-tasks .task-title');
+      const copy = title?.firstElementChild?.firstElementChild;
+      const frame = await Promise.race([new Promise(resolve => requestAnimationFrame(() => resolve('fired'))), new Promise(resolve => setTimeout(() => resolve('not fired in 2s'), 2000))]);
+      return { frame, visibility: document.visibilityState, dpr: devicePixelRatio, innerWidth, titleText: copy?.textContent,
+        titleClientWidth: title?.clientWidth, copyWidth: copy?.getBoundingClientRect().width,
+        maskWidth: title?.closest('.task-row')?.querySelector('.task-source')?.offsetWidth,
+        className: title?.className, travel: title?.style.getPropertyValue('--travel'),
+        font: copy && getComputedStyle(copy).fontFamily, fontSize: copy && getComputedStyle(copy).fontSize,
+        reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, userAgent: navigator.userAgent };
+    })()`));
     await one.request('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1000, y: 700 });
     const taskOffset = () => run(`new DOMMatrix(getComputedStyle(${panel}.querySelector('.current-tasks .task-track')).transform).m41`);
     assert.equal(await taskOffset(), 0, 'Task title rests at its initial position');

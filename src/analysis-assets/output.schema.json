@@ -3,7 +3,8 @@
   "properties": {
     "summary": {
       "type": "string",
-      "maxLength": 40
+      "maxLength": 40,
+      "description": "不超过40个汉字的整体进展摘要，说明当前核心目标与剩余工作。"
     },
     "gitPush": {
       "type": "object",
@@ -41,7 +42,8 @@
             ]
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "完整任务标题（动作 + 目标对象），保留完整范围；不要包含完成状态、等待原因或进度评论。"
           },
           "status": {
             "type": "string",
@@ -61,7 +63,8 @@
           },
           "summary": {
             "type": "string",
-            "maxLength": 20
+            "maxLength": 20,
+            "description": "不超过20个汉字的简短任务标题（精简版动作 + 对象），供独立识别任务。严禁写成“已合入”“待定”“待实测”“未做，待安排”等纯状态描述或进展批注。"
           }
         },
         "required": [

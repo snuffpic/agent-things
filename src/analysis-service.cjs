@@ -12,7 +12,7 @@ const { assertUpdateIdle } = require('./npm-updates.cjs');
 const { nextBatch, measureRequest, splitAdaptiveBatches, FULL_PASS_MAX_BYTES, FULL_PASS_TOKEN_BUDGET, getAnalysisInstructions } = require('./analysis-budget.cjs');
 const { errorDetails, progressError } = require('./progress-error.cjs');
 const { readConfiguredLang } = require('./i18n.cjs');
-const versions = { prompt: '4', schema: '4', ledger: '3' };
+const versions = { prompt: '5', schema: '5', ledger: '3' };
 class AnalysisService {
   constructor({ store, onChange = () => {}, makeServer, run,
     resources = path.join(__dirname, 'analysis-assets'), logFile = path.join(path.dirname(store.file), 'analysis.jsonl'),

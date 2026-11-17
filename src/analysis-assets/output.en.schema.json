@@ -3,7 +3,8 @@
   "properties": {
     "summary": {
       "type": "string",
-      "maxLength": 120
+      "maxLength": 120,
+      "description": "Concise overall summary (at most 120 chars) stating the current goal and remaining work."
     },
     "gitPush": {
       "type": "object",
@@ -41,7 +42,8 @@
             ]
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Full task title (action + target) preserving full scope; do not put completion status, waiting reasons, or progress remarks here."
           },
           "status": {
             "type": "string",
@@ -61,7 +63,8 @@
           },
           "summary": {
             "type": "string",
-            "maxLength": 60
+            "maxLength": 60,
+            "description": "Short standalone task title (at most 60 chars, concise action + target). NEVER write status remarks or blocker notes such as 'merged to main', 'pending decision', 'waiting for test', or 'not scheduled yet'."
           }
         },
         "required": [

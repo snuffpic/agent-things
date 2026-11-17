@@ -90,7 +90,7 @@ test('outdated checkpoint versions cause complete cleaned-history reanalysis', a
   store.write(next);
   await service.analyze(key);
   assert.equal(calls, 2);
-  assert.deepEqual(store.analysisState(key).analysis.checkpoint.versions, { prompt: '4', schema: '4', ledger: '3' });
+  assert.deepEqual(store.analysisState(key).analysis.checkpoint.versions, { prompt: '5', schema: '5', ledger: '3' });
 });
 
 test('reading publishes boundary and page statistics, retaining them on failure', async t => {
@@ -293,4 +293,13 @@ test('history replay retains all twelve tasks and source identities through the 
   assert.equal(progress.tasks.length, 13);
   assert.equal(progress.tasks.filter(task => task.status === 'done').length, 9);
   assert.equal(progress.progress, 69);
+});
+
+test('analysis schemas document task title and short summary roles against status-only remarks', () => {
+  for (const file of ['../src/analysis-assets/output.schema.json', '../src/analysis-assets/output.en.schema.json']) {
+    const schema = JSON.parse(fs.readFileSync(path.join(__dirname, file), 'utf8'));
+    const taskProps = schema.properties.tasks.items.properties;
+    assert.ok(typeof taskProps.title.description === 'string' && taskProps.title.description.length > 10, `${file} title needs description`);
+    assert.ok(typeof taskProps.summary.description === 'string' && taskProps.summary.description.length > 20, `${file} summary needs description`);
+  }
 });

@@ -72,7 +72,7 @@ jobs:
       - name: Enable npm trusted publishing
         run: npm install --global npm@11 --ignore-scripts --registry=https://registry.npmjs.org
       - name: Publish the exact verified archive
-        run: npm publish dist/*.tgz --ignore-scripts --access public --provenance --registry=https://registry.npmjs.org
+        run: npm publish ./dist/*.tgz --ignore-scripts --access public --provenance --registry=https://registry.npmjs.org
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

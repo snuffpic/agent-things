@@ -52,7 +52,7 @@ test('CI command references and packaging inputs are present in the source candi
   assert.ok(pkg.scripts.verify.indexOf('npm test') < pkg.scripts.verify.indexOf('check:package'));
   assert.match(release, /needs: verify/);
   assert.match(release, /github.event_name == 'workflow_dispatch' && inputs.publish/);
-  assert.match(release, /npm publish dist\/\*\.tgz --ignore-scripts/);
+  assert.match(release, /npm publish \.\/dist\/\*\.tgz --ignore-scripts/);
   for (const file of ['scripts/prepare-release.cjs', 'scripts/check.cjs', 'scripts/acceptance/fresh-install-terminal.py', 'scripts/acceptance/fresh-install-preload.cjs']) assert.ok(fs.existsSync(path.join(root, file)), file);
 });
 

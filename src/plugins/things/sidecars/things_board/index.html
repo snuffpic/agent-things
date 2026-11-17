@@ -564,6 +564,72 @@
       margin-top: 8px;
     }
 
+    .app-update {
+      margin-top: 3px;
+      padding: 10px 11px;
+      background: var(--at-hover);
+      border: 1px solid var(--at-line);
+      border-radius: 10px;
+    }
+    .app-update-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .app-update-label {
+      font-size: 12px;
+      line-height: 18px;
+      color: var(--at-ink);
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .app-update-button {
+      flex: none;
+      padding: 5px 10px;
+      min-height: 28px;
+      border-radius: 7px;
+      font-size: 11px;
+    }
+    .app-update-detail {
+      margin-top: 7px;
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--at-secondary);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      user-select: text;
+    }
+    .app-update[data-failed=true] .app-update-detail {
+      color: var(--error);
+    }
+
+    .version-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 0 2px;
+      font-size: 11px;
+      line-height: 16px;
+      color: var(--at-muted);
+    }
+    .version-bar-text {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .version-bar[data-failed=true] .version-bar-text {
+      color: var(--error);
+    }
+    .version-check-button {
+      flex: none;
+      font-size: 11px;
+      color: var(--at-muted);
+    }
+    .version-check-button:hover:not(:disabled) {
+      color: inherit;
+    }
+
     /* Views */
     .view-heading {
       position: sticky;
@@ -1066,6 +1132,17 @@
             <span id="notesRowLabel">备注</span>
             <span class="row-detail" id="noteOpenLabel">添加</span>
           </button>
+          <div class="app-update" id="appUpdateBox" hidden>
+            <div class="app-update-row">
+              <span class="app-update-label" id="appUpdateLabel" role="status"></span>
+              <button type="button" class="primary app-update-button" id="btnAppUpdate" onclick="onUpgradeClick()">立即升级</button>
+            </div>
+            <div class="app-update-detail" id="appUpdateDetail" hidden></div>
+          </div>
+        </div>
+        <div class="version-bar" id="versionBar" hidden>
+          <span class="version-bar-text" id="versionBarText" role="status"></span>
+          <button type="button" class="text-button version-check-button" id="btnCheckUpdate" onclick="onCheckUpdateClick()">检查更新</button>
         </div>
       </div>
 
@@ -1243,6 +1320,23 @@
         unknownActionError: '未知错误',
         cardOpFailed: '操作失败',
         cardAuthUnavailable: '获取连接凭据失败',
+        updateStages: { queued: '正在准备升级', checking: '正在检查版本', downloading: '正在下载新版本', waiting: '等待当前分析结束', installing: '正在升级' },
+        updateAvailablePattern: '发现新版本 v{version}',
+        upgradedToPattern: '已升级至 v{version}',
+        updateFailedLabel: '升级失败',
+        upgradeBtn: '立即升级',
+        upgradingShort: '正在升级…',
+        checkUpdateBtn: '检查更新',
+        checkingUpdateShort: '正在检查…',
+        alreadyLatestPattern: '当前已是最新版 v{version}',
+        versionTagPattern: 'v{version}',
+        checkUpdateFailedLabel: '检查更新失败',
+        pleaseWait: '请稍候',
+        completedShort: '已完成',
+        retryBtn: '重试',
+        terminalUpgradePrefix: '终端升级：',
+        reconnectHint: '正在重新连接后台，升级状态将在连接后恢复',
+        reconnectMcpHint: '请在客户端重新连接 MCP 服务',
       },
       en: {
         docTitleSuffix: 'Progress',
@@ -1308,6 +1402,23 @@
         unknownActionError: 'Unknown error',
         cardOpFailed: 'Card action failed',
         cardAuthUnavailable: 'Card authorization unavailable',
+        updateStages: { queued: 'Preparing upgrade', checking: 'Checking version', downloading: 'Downloading update', waiting: 'Waiting for analysis to finish', installing: 'Upgrading' },
+        updateAvailablePattern: 'Update available v{version}',
+        upgradedToPattern: 'Upgraded to v{version}',
+        updateFailedLabel: 'Upgrade failed',
+        upgradeBtn: 'Upgrade',
+        upgradingShort: 'Upgrading...',
+        checkUpdateBtn: 'Check updates',
+        checkingUpdateShort: 'Checking...',
+        alreadyLatestPattern: 'Up to date (v{version})',
+        versionTagPattern: 'v{version}',
+        checkUpdateFailedLabel: 'Update check failed',
+        pleaseWait: 'Please wait',
+        completedShort: 'Done',
+        retryBtn: 'Retry',
+        terminalUpgradePrefix: 'Terminal upgrade: ',
+        reconnectHint: 'Reconnecting to background service; upgrade status will resume shortly',
+        reconnectMcpHint: 'Please reconnect the MCP server in your client',
       }
     };
     const colors = injectedI18n.colors || {"unstarted":"#9098a2","unfinished":"#c89b38","completed":"#548eea","pushed":"#a17be3"};
@@ -1327,6 +1438,45 @@
       return String(tmpl).replace(/\{(\w+)\}/g, function(_, k) { return vars[k] !== undefined ? String(vars[k]) : ''; });
     }
     let lastRenderedData = null;
+    const computeUpdateBannerState = window.__agentThingsUpdateBannerState || function(info, dict, opts = {}) {
+      const update = info?.update;
+      const stage = update?.stage;
+      const stages = dict.updateStages || {};
+      const activeStage = Boolean(stages[stage]) || Boolean(opts.starting);
+      const updatedAtMs = update?.updatedAt ? Date.parse(update.updatedAt) : NaN;
+      const completed = stage === 'completed' && Number.isFinite(updatedAtMs) && Date.now() - updatedAtMs < 60000;
+      const failed = stage === 'failed';
+      const visible = Boolean(info?.available || activeStage || failed || completed);
+      const command = info?.command || 'npx agent-things@latest';
+      return {
+        visible,
+        active: activeStage,
+        completed,
+        failed,
+        buttonDisabled: activeStage || completed,
+        label: activeStage ? (stages[stage] || stages.queued) : failed ? dict.updateFailedLabel : completed
+          ? str('upgradedToPattern', { version: update?.currentVersion || '' }) : str('updateAvailablePattern', { version: info?.latestVersion || '' }),
+        buttonText: activeStage ? dict.pleaseWait : completed ? dict.completedShort : failed ? dict.retryBtn : dict.upgradeBtn,
+        detail: opts.connectionError ? `${dict.reconnectHint}\n${dict.terminalUpgradePrefix}${command}`
+          : failed ? `${update?.error || ''}\n${dict.terminalUpgradePrefix}${command}` : (completed && update?.reconnectMcp ? dict.reconnectMcpHint : ''),
+        versionText: opts.manualCheckStatus === 'failed' ? `${dict.checkUpdateFailedLabel}${opts.checkError ? `: ${opts.checkError}` : ''}`
+          : (opts.manualCheckStatus === 'latest' && info?.currentVersion ? str('alreadyLatestPattern', { version: info.currentVersion }) : (info?.currentVersion ? `v${info.currentVersion}` : '')),
+        showVersionBar: !visible,
+        checking: Boolean(opts.checking),
+        checkDisabled: Boolean(opts.checking),
+        checkFailed: !visible && opts.manualCheckStatus === 'failed',
+        checkButtonText: opts.checking ? dict.checkingUpdateShort : dict.checkUpdateBtn,
+      };
+    };
+    let currentUpdateInfo = null;
+    let updateTimer = null;
+    let manualCheckTimer = null;
+    let updateChecking = false;
+    let upgradeStarting = false;
+    let updateConnectionError = '';
+    let manualCheckStatus = '';
+    let manualCheckError = '';
+    let isSessionAnalyzing = false;
 
     function applyStaticLanguage() {
       document.documentElement.lang = activeLang === 'en' ? 'en' : 'zh-CN';
@@ -1380,7 +1530,8 @@
       const saveBtn = document.getElementById('btnSaveRecord');
       if (saveBtn) saveBtn.textContent = str('saveBtn');
       const btnAnalyzeEl = document.getElementById('btnAnalyze');
-      if (btnAnalyzeEl) btnAnalyzeEl.textContent = btnAnalyzeEl.disabled ? str('btnUpdating') : str('btnUpdate');
+      if (btnAnalyzeEl) btnAnalyzeEl.textContent = isSessionAnalyzing ? str('btnUpdating') : str('btnUpdate');
+      renderUpdateUi();
       const summaryBlock = document.getElementById('summaryBlock');
       const summaryExpandBtn = document.getElementById('summaryExpand');
       if (summaryBlock && summaryExpandBtn) {
@@ -1895,6 +2046,7 @@
       }
 
       const analyzing = Boolean(s.analyzing || s.analysisStatus?.status === 'pending');
+      isSessionAnalyzing = analyzing;
       const analysisStatus = s.analysisStatus;
       const btnAnalyze = document.getElementById('btnAnalyze');
       if (btnAnalyze) {
@@ -1902,7 +2054,7 @@
           btnAnalyze.disabled = true;
           btnAnalyze.textContent = str('btnUpdating');
         } else {
-          btnAnalyze.disabled = false;
+          btnAnalyze.disabled = ['waiting', 'installing'].includes(currentUpdateInfo?.update?.stage);
           btnAnalyze.textContent = str('btnUpdate');
           if (analysisStatus?.status === 'failed') {
             showFeedback(str('analysisNotDonePrefix') + (analysisStatus.error || str('analysisAbnormal')), true);
@@ -2263,6 +2415,140 @@
       }
     }
 
+    function renderUpdateUi(info) {
+      if (info !== undefined) currentUpdateInfo = info;
+      const banner = computeUpdateBannerState(currentUpdateInfo, locale, {
+        starting: upgradeStarting,
+        checking: updateChecking,
+        connectionError: updateConnectionError,
+        manualCheckStatus,
+        checkError: manualCheckError,
+      });
+      const box = document.getElementById('appUpdateBox');
+      const labelEl = document.getElementById('appUpdateLabel');
+      const upgradeEl = document.getElementById('btnAppUpdate');
+      const detailEl = document.getElementById('appUpdateDetail');
+      const versionBarEl = document.getElementById('versionBar');
+      const versionTextEl = document.getElementById('versionBarText');
+      const checkBtnEl = document.getElementById('btnCheckUpdate');
+      if (box) {
+        box.hidden = !banner.visible;
+        box.setAttribute('data-failed', String(banner.failed));
+      }
+      if (labelEl) labelEl.textContent = banner.label;
+      if (upgradeEl) {
+        upgradeEl.textContent = banner.buttonText;
+        upgradeEl.disabled = banner.buttonDisabled;
+      }
+      if (detailEl) {
+        detailEl.textContent = banner.detail;
+        detailEl.hidden = !banner.detail;
+      }
+      if (versionBarEl) {
+        versionBarEl.hidden = !(banner.showVersionBar && (currentUpdateInfo || banner.checking || banner.checkFailed));
+        versionBarEl.setAttribute('data-failed', String(banner.checkFailed));
+      }
+      if (versionTextEl) versionTextEl.textContent = banner.versionText;
+      if (checkBtnEl) {
+        checkBtnEl.textContent = banner.checkButtonText;
+        checkBtnEl.disabled = banner.checkDisabled;
+      }
+      const btnAnalyze = document.getElementById('btnAnalyze');
+      if (btnAnalyze) {
+        btnAnalyze.disabled = isSessionAnalyzing || ['waiting', 'installing'].includes(currentUpdateInfo?.update?.stage);
+      }
+      return banner.active;
+    }
+
+    async function pollAppUpdate() {
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = null;
+      }
+      try {
+        const reply = await sendProxyAction('app-update-info', {});
+        const info = reply?.updateInfo ?? null;
+        updateConnectionError = '';
+        if (info?.available) {
+          manualCheckStatus = '';
+          manualCheckError = '';
+        }
+        const active = renderUpdateUi(info);
+        updateTimer = setTimeout(pollAppUpdate, active ? 2000 : 60000);
+      } catch (err) {
+        updateConnectionError = err?.message || str('cardOpFailed');
+        if (currentUpdateInfo) renderUpdateUi(currentUpdateInfo);
+        updateTimer = setTimeout(pollAppUpdate, 5000);
+      }
+    }
+
+    async function onCheckUpdateClick() {
+      if (updateChecking) return;
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = null;
+      }
+      if (manualCheckTimer) {
+        clearTimeout(manualCheckTimer);
+        manualCheckTimer = null;
+      }
+      updateChecking = true;
+      manualCheckStatus = '';
+      manualCheckError = '';
+      renderUpdateUi();
+      try {
+        const reply = await sendProxyAction('app-update-info', { force: true });
+        const info = reply?.updateInfo ?? null;
+        updateChecking = false;
+        updateConnectionError = '';
+        if (info?.checkError && !info?.available) {
+          manualCheckStatus = 'failed';
+          manualCheckError = info.checkError;
+        } else if (!info?.available) {
+          manualCheckStatus = 'latest';
+          manualCheckTimer = setTimeout(() => {
+            manualCheckTimer = null;
+            if (manualCheckStatus === 'latest') {
+              manualCheckStatus = '';
+              renderUpdateUi();
+            }
+          }, 5000);
+        }
+        const active = renderUpdateUi(info);
+        updateTimer = setTimeout(pollAppUpdate, active ? 2000 : 60000);
+      } catch (err) {
+        updateChecking = false;
+        manualCheckStatus = 'failed';
+        manualCheckError = err?.message || str('cardOpFailed');
+        renderUpdateUi();
+        updateTimer = setTimeout(pollAppUpdate, 60000);
+      }
+    }
+
+    async function onUpgradeClick() {
+      const upgradeEl = document.getElementById('btnAppUpdate');
+      if (upgradeEl?.disabled || upgradeStarting) return;
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = null;
+      }
+      upgradeStarting = true;
+      manualCheckStatus = '';
+      manualCheckError = '';
+      renderUpdateUi();
+      try {
+        const reply = await sendProxyAction('app-update-start', {});
+        upgradeStarting = false;
+        updateConnectionError = '';
+        renderUpdateUi(reply?.updateInfo ?? null);
+      } catch (err) {
+        upgradeStarting = false;
+        updateConnectionError = err?.message || str('cardOpFailed');
+        renderUpdateUi();
+      }
+      updateTimer = setTimeout(pollAppUpdate, 1000);
+    }
+
     function initCard() {
       applyStaticLanguage();
       syncThemeWithHost();
@@ -2270,6 +2556,7 @@
       setupScrollListener();
       fetchSessionSnapshot(conversationId);
       initEventStream();
+      void pollAppUpdate();
 
       // 当在 Antigravity 切换对话时自动刷新对应会话状态
       setInterval(() => {

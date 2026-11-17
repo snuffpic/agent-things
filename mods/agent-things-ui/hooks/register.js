@@ -1,10 +1,11 @@
 import { progressState } from './progress.js';
-import { draftTransition, forLang } from './foundation.js';
+import { draftTransition, forLang, updateBannerState } from './foundation.js';
 import { CONTENT_WIDTH, NOTE_LINE_WIDTH, colors, date, svg, headerRing, headerTitleSpec, statusBadgeSvg, timeTextSvg, scoreSvg, bar, preview, wrapText, measureButtonWidth, measureClearWidth, paneIconWidth } from './presentation.js';
 
 let sessionId, cwd, home, data = null, projectGit = null, updateInfo = null, activeLang = 'zh', configLangLoaded = false;
 let mode = 'overview', draft = null, baseRevision = 0, busy = false, error = '', source = null, sourceMode = 'overview';
 let conflict = false, loading = false, refreshPromise = null;
+let checkingUpdate = false, upgrading = false, manualCheckStatus = '', manualCheckError = '', lastUpdateCheckedAt = 0;
 let expanded = false, noteOpen = false, seen = false, sequence = 0, paneRequested = false, waitLoop = 0;
 const PANE = 'agent-things', PANE_TITLE = 'Agent Things', PINNED = 'pane:pinned';
 const SIDEBAR_HINT_DISMISSED = 'sidebar-hint:dismissed';
@@ -27,7 +28,11 @@ async function request($, action, fields = {}) {
 }
 function receive(value) {
   if (value?.lang === 'en' || value?.lang === 'zh') activeLang = value.lang;
-  if ('updateInfo' in value) { updateInfo = value.updateInfo; return; }
+  if ('updateInfo' in value) {
+    updateInfo = value.updateInfo;
+    if (updateInfo?.available) { manualCheckStatus = ''; manualCheckError = ''; }
+    return;
+  }
   if ((!data && 'revision' in value) || (data && value.revision >= data.revision)) data = value;
   if (value.paneRequested) paneRequested = true;
   if (value.projectGit) projectGit = value.projectGit;
@@ -167,12 +172,54 @@ function startRefresh($, includeGit = false) {
 async function raceWithin($, promise, timeoutMs) {
   await Promise.race([promise, $.clock.sleep(timeoutMs)]);
 }
+async function runUpdateCheck($, force = false) {
+  if (checkingUpdate) return;
+  if (force) {
+    checkingUpdate = true;
+    manualCheckStatus = '';
+    manualCheckError = '';
+    $.ui.invalidate('ui.render');
+  }
+  try {
+    const reply = await request($, 'update-info', force ? { force: true } : {});
+    lastUpdateCheckedAt = Date.now();
+    receive(reply);
+    if (force) {
+      if (reply?.updateInfo?.checkError && !reply?.updateInfo?.available) {
+        manualCheckStatus = 'failed';
+        manualCheckError = reply.updateInfo.checkError;
+      } else if (!reply?.updateInfo?.available) {
+        manualCheckStatus = 'latest';
+        $.clock.after(5000, () => {
+          if (manualCheckStatus === 'latest' && !checkingUpdate) {
+            manualCheckStatus = '';
+            $.ui.invalidate('ui.render');
+          }
+        });
+      }
+    }
+  } catch (failure) {
+    if (force) {
+      manualCheckStatus = 'failed';
+      manualCheckError = failure.message;
+    }
+  } finally {
+    if (force) checkingUpdate = false;
+    $.ui.invalidate('ui.render');
+  }
+}
+async function startUpgrade($) {
+  if (upgrading) return;
+  upgrading = true; manualCheckStatus = ''; manualCheckError = ''; error = ''; $.ui.invalidate('ui.render');
+  try { receive(await request($, 'upgrade')); }
+  catch (failure) { error = failure.message; }
+  finally { upgrading = false; $.ui.invalidate('ui.render'); }
+}
 async function initialize($) {
   await ensureContext($);
   void startRefresh($);
   $.clock.after(0, async () => {
-    try { receive(await request($, 'update-info')); } catch { /* Upgrade discovery is retried by its explicit button. */ }
-    $.ui.invalidate('ui.render');
+    await runUpdateCheck($, false);
   });
 }
 
@@ -182,12 +229,12 @@ export function register(on) {
     await $.command.register({ name: 'things', description: t('cardCommandDescription'), immediate: true });
     if (paneRequested || await $.store.get(PINNED)) { seen = true; paneRequested = false; void $.ui.open({ id: PANE, title: PANE_TITLE }); }
     void watchChanges($);
-    // 账本同步由 watchChanges 负责；这里只跟进升级进度。
+    // 账本同步由 watchChanges 负责；这里跟进升级进度与长会话周期重查。
     $.clock.every(2000, async () => {
       const updating = ['queued', 'checking', 'downloading', 'waiting', 'installing'].includes(updateInfo?.update?.stage);
-      if (!seen || busy || !updating) return;
-      try { receive(await request($, 'update-info')); } catch (failure) { error = failure.message; }
-      $.ui.invalidate('ui.render');
+      const refreshDue = seen && !checkingUpdate && lastUpdateCheckedAt > 0 && Date.now() - lastUpdateCheckedAt >= 3600000;
+      if (!seen || (!updating && !refreshDue) || (updating && busy)) return;
+      await runUpdateCheck($, false);
     });
     return next(e);
   });
@@ -352,10 +399,28 @@ async function draw($, e, inPane) {
       content.push(row([button('completed-label', t('completedHeading'), () => view($, 'completed'), { plain: true }), trailing(button('completed', t('countArrowPattern', { count: completed.length }), () => view($, 'completed'), { plain: true, dimColor: true }))]));
       content.push(rule());
       content.push(row([button('note-label', t('notesLabel'), () => edit($), { plain: true }), trailing(button('edit-note', record?.note ? t('editLabel') : t('addLabel'), () => edit($), { plain: true, dimColor: true }))]));
-      const updating = ['queued', 'checking', 'downloading', 'waiting', 'installing'].includes(updateInfo?.update?.stage);
-      if (updating) content.push(text(t('upgradingShort'), { dimColor: true }));
-      else if (updateInfo?.available) content.push(row([text(t('updateAvailablePattern', { version: updateInfo.latestVersion || '' })), trailing(button('upgrade', t('upgradeBtn'), () => operate($, 'upgrade')))]));
-      if (updateInfo?.update?.stage === 'failed') content.push(text(`${t('updateFailedLabel')}: ${updateInfo.update.error || updateInfo.command}`, { color: '#D43F3F' }));
+      const banner = updateBannerState(updateInfo, strings, {
+        starting: upgrading,
+        checking: checkingUpdate,
+        manualCheckStatus,
+        checkError: manualCheckError,
+      });
+      if (banner.visible) {
+        if (banner.active) {
+          content.push(text(banner.label, { dimColor: true }));
+        } else if (banner.completed) {
+          content.push(text(banner.label, { dimColor: true }));
+          if (banner.detail) content.push(text(banner.detail, { size: 'footnote', dimColor: true }));
+        } else {
+          content.push(row([text(banner.label), trailing(button('upgrade', banner.buttonText, () => startUpgrade($)))]));
+          if (banner.detail) content.push(text(banner.detail, { color: banner.failed ? '#D43F3F' : undefined, size: 'footnote', dimColor: !banner.failed }));
+        }
+      } else if (updateInfo || checkingUpdate || manualCheckStatus) {
+        content.push(row([
+          ...(banner.versionText ? [text(banner.versionText, banner.checkFailed ? { size: 'footnote', color: '#D43F3F' } : { size: 'footnote', dimColor: true })] : []),
+          trailing(button('check-update', banner.checkButtonText, () => runUpdateCheck($, true), { plain: true, dimColor: true })),
+        ]));
+      }
     }
     if (error) content.push(Box({ width: '100%', flexDirection: 'column', children: [text(wrapText(error, inPane ? Math.max(100, viewWidth - 16) : NOTE_LINE_WIDTH), { color: '#D43F3F' })] }));
     if (mode === 'edit' && (conflict || error.includes('其他窗口') || error.includes('another window'))) content.push(button('reload-version', t('resolveConflictBtn'), async () => {

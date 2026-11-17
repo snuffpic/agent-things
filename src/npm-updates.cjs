@@ -17,6 +17,7 @@ const CHECK_FILE = path.join(DATA_DIR, 'npm-version-check.json');
 const PLIST = path.join(DATA_DIR, 'npm-update.plist');
 const PACKAGE = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'));
 const ACTIVE = new Set(['queued', 'checking', 'downloading', 'waiting', 'installing']);
+const CHECK_INTERVAL_MS = 3600000;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let checking;
 
@@ -67,7 +68,7 @@ async function getUpdateInfo({ force = false } = {}) {
   if (!currentVersion) return { currentVersion: null, available: false, command: `npx ${PACKAGE.name}@latest`, update };
   let cached = fs.existsSync(CHECK_FILE) ? JSON.parse(fs.readFileSync(CHECK_FILE, 'utf8')) : null;
   if (cached?.currentVersion !== currentVersion) cached = null;
-  if (!ACTIVE.has(update?.stage) && (force || !cached || Date.now() - Date.parse(cached.attemptedAt) >= 86400000)) {
+  if (!ACTIVE.has(update?.stage) && (force || !cached || Date.now() - Date.parse(cached.attemptedAt) >= CHECK_INTERVAL_MS)) {
     if (!checking) checking = (async () => {
       const attemptedAt = new Date().toISOString();
       let result;
@@ -225,4 +226,4 @@ async function startUpdateUnlocked() {
 const startUpdate = () => require('./lifecycle-lock.cjs').withLifecycleLock(DATA_DIR, startUpdateUnlocked);
 
 if (require.main === module && process.argv[2] === '--worker') void runUpdate(process.argv[3]);
-module.exports = { newerVersion, checkForUpdate, getUpdateInfo, downloadRelease, readUpdateStatus, startUpdate, assertUpdateIdle, assertSetupIdle, verifyServices, runUpdate };
+module.exports = { CHECK_INTERVAL_MS, newerVersion, checkForUpdate, getUpdateInfo, downloadRelease, readUpdateStatus, startUpdate, assertUpdateIdle, assertSetupIdle, verifyServices, runUpdate };

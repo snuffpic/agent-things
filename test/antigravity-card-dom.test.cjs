@@ -211,10 +211,16 @@ function createCardDomFixture({ initialProgress = 50, initialRevision = 10, conv
       onIncomingHostMessage,
       onSourceClick,
       onOpenPaneClick,
+      onCheckUpdateClick,
+      onUpgradeClick,
+      renderUpdateUi,
+      pollAppUpdate,
       requestHostAuth,
       setupHostAutoResize,
       dispose() {
         if (saveSwitchTimer) { clearTimeout(saveSwitchTimer); saveSwitchTimer = null; }
+        if (updateTimer) { clearTimeout(updateTimer); updateTimer = null; }
+        if (manualCheckTimer) { clearTimeout(manualCheckTimer); manualCheckTimer = null; }
         if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
         if (sseSource) { try { sseSource.close(); } catch(_) {} sseSource = null; }
         for (const [key, req] of pendingActions.entries()) {
@@ -722,5 +728,88 @@ test('DOM 回归 5：手动调整保存与 SSE 竞态、无 SSE 回包兜底、�
     assert.equal(f1.getEl('summaryBlock').hidden, true);
   } finally {
     f1.card.dispose();
+  }
+});
+
+test('DOM 回归 8：Antigravity 卡片版本栏、主动检查更新（force: true）与升级状态流闭环', async () => {
+  const html = renderAntigravityCardHtml({
+    title: '升级检查测试会话',
+    conversationId: 'dom-update-conv',
+    record: { state: 'unfinished', progress: 40, note: '测试升级条' },
+    tasks: [],
+    revision: 1,
+  });
+  assert.ok(html.includes('id="appUpdateBox" hidden'), '卡片初始渲染应包含隐藏的 appUpdateBox');
+  assert.ok(html.includes('id="versionBar"'), '卡片初始渲染应包含版本信息与检查更新栏');
+  assert.ok(html.includes('id="btnCheckUpdate"'), '卡片应包含检查更新按钮');
+
+  const f = createCardDomFixture({ initialProgress: 40, initialRevision: 1, convId: 'dom-update-conv' });
+  const { card, getEl } = f;
+  try {
+    // 1. 点击检查更新（force: true），返回当前已是最新
+    f.setProxyHandler(msg => {
+      if (msg.type === 'AGENT_THINGS_ACTION_PROXY' && msg.action === 'app-update-info') {
+        assert.equal(msg.payload?.force, true);
+        card.onIncomingHostMessage({
+          type: 'AGENT_THINGS_ACTION_RESULT',
+          nonce: msg.nonce,
+          action: 'app-update-info',
+          success: true,
+          data: { updateInfo: { currentVersion: '1.3.2', latestVersion: '1.3.2', available: false, command: 'npx agent-things@latest', update: null } },
+        });
+      }
+    });
+    await card.onCheckUpdateClick();
+    assert.equal(getEl('appUpdateBox').hidden, true);
+    assert.equal(getEl('versionBar').hidden, false);
+    assert.equal(getEl('versionBarText').textContent, '当前已是最新版 v1.3.2');
+
+    // 2. 再次点击检查更新，发现新版本 1.3.3 -> 原地展示“立即升级”并隐藏 versionBar
+    f.setProxyHandler(msg => {
+      if (msg.type === 'AGENT_THINGS_ACTION_PROXY' && msg.action === 'app-update-info') {
+        card.onIncomingHostMessage({
+          type: 'AGENT_THINGS_ACTION_RESULT',
+          nonce: msg.nonce,
+          action: 'app-update-info',
+          success: true,
+          data: { updateInfo: { currentVersion: '1.3.2', latestVersion: '1.3.3', available: true, command: 'npx agent-things@latest', update: null } },
+        });
+      }
+    });
+    await card.onCheckUpdateClick();
+    assert.equal(getEl('versionBar').hidden, true);
+    assert.equal(getEl('appUpdateBox').hidden, false);
+    assert.equal(getEl('appUpdateLabel').textContent, '发现新版本 v1.3.3');
+    assert.equal(getEl('btnAppUpdate').textContent, '立即升级');
+
+    // 3. 点击立即升级 -> 进入 installing（禁用分析），随后 completed 展示重载提醒
+    f.setProxyHandler(msg => {
+      if (msg.type === 'AGENT_THINGS_ACTION_PROXY' && msg.action === 'app-update-start') {
+        card.onIncomingHostMessage({
+          type: 'AGENT_THINGS_ACTION_RESULT',
+          nonce: msg.nonce,
+          action: 'app-update-start',
+          success: true,
+          data: { updateInfo: { currentVersion: '1.3.2', latestVersion: '1.3.3', available: true, command: 'npx agent-things@latest', update: { stage: 'installing' } } },
+        });
+      }
+    });
+    await card.onUpgradeClick();
+    assert.equal(getEl('appUpdateLabel').textContent, '正在升级');
+    assert.equal(getEl('btnAppUpdate').disabled, true);
+    assert.equal(getEl('btnAnalyze').disabled, true, 'installing 阶段应锁定分析按钮');
+
+    card.renderUpdateUi({
+      currentVersion: '1.3.3',
+      latestVersion: '1.3.3',
+      available: false,
+      command: 'npx agent-things@latest',
+      update: { stage: 'completed', currentVersion: '1.3.3', reconnectMcp: true, updatedAt: new Date().toISOString() },
+    });
+    assert.equal(getEl('appUpdateLabel').textContent, '已升级至 v1.3.3');
+    assert.equal(getEl('appUpdateDetail').textContent, '请在客户端重新连接 MCP 服务');
+    assert.equal(getEl('btnAnalyze').disabled, false, '升级完成后非分析状态应恢复分析按钮可用');
+  } finally {
+    card.dispose();
   }
 });

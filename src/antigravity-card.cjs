@@ -6,6 +6,7 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const { readConfiguredLang, getUi } = require('./i18n.cjs');
 const { createPresentation } = require('./ui-foundation.cjs');
+const PACKAGE_VERSION = require('../package.json').version;
 
 const presentationHelper = createPresentation('zh');
 
@@ -87,7 +88,7 @@ function renderAntigravityCardHtml({
   lang = readConfiguredLang(),
 } = {}) {
   const ui = getUi(lang);
-  const { t, labels: uiLabels, taskLabels: uiTaskLabels, strings: uiStrings } = ui;
+  const { t, labels: uiLabels, taskLabels: uiTaskLabels, strings: uiStrings, updateBannerState } = ui;
   const clientI18n = { ...uiStrings };
   delete clientI18n.defaultDocTitle;
   const resolvedTitle = title || t('defaultSessionTitle');
@@ -115,6 +116,7 @@ function renderAntigravityCardHtml({
     title: resolvedTitle,
     lang: ui.lang,
     loadToken: connection?.loadToken || null,
+    packageVersion: PACKAGE_VERSION,
   });
 
   const lightAccentPalette = presentationHelper.resolveAccentPalette(readAntigravityConfiguredAccent({ isDark: false }), { isDark: false, fallback: '#2F75C3' });
@@ -744,6 +746,72 @@ function renderAntigravityCardHtml({
       margin-top: 8px;
     }
 
+    .app-update {
+      margin-top: 3px;
+      padding: 10px 11px;
+      background: var(--hover);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .app-update-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .app-update-label {
+      font-size: 12px;
+      line-height: 18px;
+      color: var(--ink);
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .app-update-button {
+      flex: none;
+      padding: 5px 10px;
+      min-height: 28px;
+      border-radius: 7px;
+      font-size: 11px;
+    }
+    .app-update-detail {
+      margin-top: 7px;
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--secondary);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      user-select: text;
+    }
+    .app-update[data-failed=true] .app-update-detail {
+      color: var(--error);
+    }
+
+    .version-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 0 2px;
+      font-size: 11px;
+      line-height: 16px;
+      color: var(--muted);
+    }
+    .version-bar-text {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .version-bar[data-failed=true] .version-bar-text {
+      color: var(--error);
+    }
+    .version-check-button {
+      flex: none;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .version-check-button:hover:not(:disabled) {
+      color: inherit;
+    }
+
     /* Views */
     .view-heading {
       position: sticky;
@@ -1207,6 +1275,17 @@ function renderAntigravityCardHtml({
             <span>${escapeHtml(t('notesLabel'))}</span>
             <span class="row-detail" id="noteOpenLabel">${escapeHtml(note ? t('editLabel') : t('addLabel'))}</span>
           </button>
+          <div class="app-update" id="appUpdateBox" hidden>
+            <div class="app-update-row">
+              <span class="app-update-label" id="appUpdateLabel" role="status"></span>
+              <button type="button" class="primary app-update-button" id="btnAppUpdate" onclick="onUpgradeClick()">${escapeHtml(t('upgradeBtn'))}</button>
+            </div>
+            <div class="app-update-detail" id="appUpdateDetail" hidden></div>
+          </div>
+        </div>
+        <div class="version-bar" id="versionBar">
+          <span class="version-bar-text" id="versionBarText" role="status">${escapeHtml(t('versionTagPattern', { version: PACKAGE_VERSION }))}</span>
+          <button type="button" class="text-button version-check-button" id="btnCheckUpdate" onclick="onCheckUpdateClick()">${escapeHtml(t('checkUpdateBtn'))}</button>
         </div>
       </div>
 
@@ -1317,12 +1396,23 @@ function renderAntigravityCardHtml({
     }
     const conversationId = ${JSON.stringify(conversationId)};
     const connection = ${configJson};
+    const computeUpdateBannerState = ${updateBannerState.toString()};
     let currentRevision = ${Number(revision) || 0};
     let savedRevision = ${Number(revision) || 0};
     let draftBaseRevision = savedRevision;
     let isFormDirty = false;
     let pendingRemoteSnapshot = null;
     let saveSwitchTimer = null;
+    let currentUpdateInfo = null;
+    let updateTimer = null;
+    let manualCheckTimer = null;
+    let updateChecking = false;
+    let upgradeStarting = false;
+    let updateConnectionError = '';
+    let manualCheckStatus = '';
+    let manualCheckError = '';
+    let updatePollingStarted = false;
+    let isSessionAnalyzing = false;
     let currentState = ${JSON.stringify(state)};
     let currentProgress = ${progress != null ? Number(progress) : 'null'};
     let isDraggingSlider = false;
@@ -1959,6 +2049,7 @@ function renderAntigravityCardHtml({
       }
 
       const analyzing = Boolean(s.analyzing || s.analysisStatus?.status === 'pending');
+      isSessionAnalyzing = analyzing;
       const analysisStatus = s.analysisStatus;
       const btnAnalyze = document.getElementById('btnAnalyze');
       if (btnAnalyze) {
@@ -1966,7 +2057,7 @@ function renderAntigravityCardHtml({
           btnAnalyze.disabled = true;
           btnAnalyze.textContent = i18n.btnUpdating;
         } else {
-          btnAnalyze.disabled = false;
+          btnAnalyze.disabled = ['waiting', 'installing'].includes(currentUpdateInfo?.update?.stage);
           btnAnalyze.textContent = i18n.btnUpdate;
           if (analysisStatus?.status === 'failed') {
             showFeedback(i18n.analysisNotDonePrefix + (analysisStatus.error || i18n.analysisAbnormal), true);
@@ -2180,6 +2271,146 @@ function renderAntigravityCardHtml({
       }
     }
 
+    function renderUpdateUi(info) {
+      if (info !== undefined) currentUpdateInfo = info;
+      const effectiveInfo = currentUpdateInfo || {
+        currentVersion: connection?.packageVersion || '',
+        available: false,
+        command: 'npx agent-things@latest',
+        update: null,
+      };
+      const banner = computeUpdateBannerState(effectiveInfo, i18n, {
+        starting: upgradeStarting,
+        checking: updateChecking,
+        connectionError: updateConnectionError,
+        manualCheckStatus: manualCheckStatus,
+        checkError: manualCheckError,
+      });
+      const box = document.getElementById('appUpdateBox');
+      const labelEl = document.getElementById('appUpdateLabel');
+      const upgradeEl = document.getElementById('btnAppUpdate');
+      const detailEl = document.getElementById('appUpdateDetail');
+      const versionBarEl = document.getElementById('versionBar');
+      const versionTextEl = document.getElementById('versionBarText');
+      const checkBtnEl = document.getElementById('btnCheckUpdate');
+      if (box) {
+        box.hidden = !banner.visible;
+        box.setAttribute('data-failed', String(banner.failed));
+      }
+      if (labelEl) labelEl.textContent = banner.label;
+      if (upgradeEl) {
+        upgradeEl.textContent = banner.buttonText;
+        upgradeEl.disabled = banner.buttonDisabled;
+      }
+      if (detailEl) {
+        detailEl.textContent = banner.detail;
+        detailEl.hidden = !banner.detail;
+      }
+      if (versionBarEl) {
+        versionBarEl.hidden = !(banner.showVersionBar && (effectiveInfo.currentVersion || banner.checking || banner.checkFailed));
+        versionBarEl.setAttribute('data-failed', String(banner.checkFailed));
+      }
+      if (versionTextEl) versionTextEl.textContent = banner.versionText;
+      if (checkBtnEl) {
+        checkBtnEl.textContent = banner.checkButtonText;
+        checkBtnEl.disabled = banner.checkDisabled;
+      }
+      const btnAnalyze = document.getElementById('btnAnalyze');
+      if (btnAnalyze) {
+        btnAnalyze.disabled = isSessionAnalyzing || ['waiting', 'installing'].includes(currentUpdateInfo?.update?.stage);
+      }
+      return banner.active;
+    }
+
+    async function pollAppUpdate() {
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = null;
+      }
+      try {
+        const reply = await sendProxyAction('app-update-info', {});
+        const info = reply?.updateInfo ?? null;
+        updateConnectionError = '';
+        if (info?.available) {
+          manualCheckStatus = '';
+          manualCheckError = '';
+        }
+        const active = renderUpdateUi(info);
+        updateTimer = setTimeout(pollAppUpdate, active ? 2000 : 60000);
+      } catch (err) {
+        updateConnectionError = err?.message || i18n.cardOpFailed;
+        if (currentUpdateInfo) renderUpdateUi(currentUpdateInfo);
+        updateTimer = setTimeout(pollAppUpdate, 5000);
+      }
+    }
+
+    async function onCheckUpdateClick() {
+      if (updateChecking) return;
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = null;
+      }
+      if (manualCheckTimer) {
+        clearTimeout(manualCheckTimer);
+        manualCheckTimer = null;
+      }
+      updateChecking = true;
+      manualCheckStatus = '';
+      manualCheckError = '';
+      renderUpdateUi();
+      try {
+        const reply = await sendProxyAction('app-update-info', { force: true });
+        const info = reply?.updateInfo ?? null;
+        updateChecking = false;
+        updateConnectionError = '';
+        if (info?.checkError && !info?.available) {
+          manualCheckStatus = 'failed';
+          manualCheckError = info.checkError;
+        } else if (!info?.available) {
+          manualCheckStatus = 'latest';
+          manualCheckTimer = setTimeout(function() {
+            manualCheckTimer = null;
+            if (manualCheckStatus === 'latest') {
+              manualCheckStatus = '';
+              renderUpdateUi();
+            }
+          }, 5000);
+        }
+        const active = renderUpdateUi(info);
+        updateTimer = setTimeout(pollAppUpdate, active ? 2000 : 60000);
+      } catch (err) {
+        updateChecking = false;
+        manualCheckStatus = 'failed';
+        manualCheckError = err?.message || i18n.cardOpFailed;
+        renderUpdateUi();
+        updateTimer = setTimeout(pollAppUpdate, 60000);
+      }
+    }
+
+    async function onUpgradeClick() {
+      const upgradeEl = document.getElementById('btnAppUpdate');
+      if (upgradeEl?.disabled || upgradeStarting) return;
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = null;
+      }
+      upgradeStarting = true;
+      manualCheckStatus = '';
+      manualCheckError = '';
+      renderUpdateUi();
+      try {
+        const reply = await sendProxyAction('app-update-start', {});
+        upgradeStarting = false;
+        updateConnectionError = '';
+        renderUpdateUi(reply?.updateInfo ?? null);
+      } catch (err) {
+        upgradeStarting = false;
+        updateConnectionError = err?.message || i18n.cardOpFailed;
+        renderUpdateUi();
+      }
+      updateTimer = setTimeout(pollAppUpdate, 1000);
+    }
+
     async function initEventStream() {
       if (sseReconnectTimer) {
         clearTimeout(sseReconnectTimer);
@@ -2198,6 +2429,10 @@ function renderAntigravityCardHtml({
         }
         authTicket = auth.ticket;
         serviceOrigin = auth.origin;
+        if (!updatePollingStarted && hostChannelPort) {
+          updatePollingStarted = true;
+          void pollAppUpdate();
+        }
 
         const sseUrl = auth.origin + '/session/events?id=' + encodeURIComponent(conversationId) + '&ticket=' + encodeURIComponent(auth.ticket);
         const es = new EventSource(sseUrl);

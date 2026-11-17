@@ -31,7 +31,7 @@ function getCardTools(lang = readConfiguredLang()) {
       description: en
         ? 'Read card status, Git info, version updates, or wait for session changes'
         : '读取卡片状态、Git 信息、版本或等待会话变更',
-      inputSchema: { type: 'object', properties: { ...cardProperties, action: { enum: ['analysis-state', 'project-git', 'app-update-info', 'watch-state'] }, cursor: { type: 'string', pattern: '^[a-f0-9]{64}$' } }, required: ['conversation_id', 'card_token', 'action'], additionalProperties: false },
+      inputSchema: { type: 'object', properties: { ...cardProperties, action: { enum: ['analysis-state', 'project-git', 'app-update-info', 'watch-state'] }, cursor: { type: 'string', pattern: '^[a-f0-9]{64}$' }, force: { type: 'boolean' } }, required: ['conversation_id', 'card_token', 'action'], additionalProperties: false },
       annotations: { readOnlyHint: true }, _meta: { ui: { visibility: ['app'] } } },
     { name: 'change_session_card',
       description: en
@@ -148,6 +148,7 @@ function createCodexCard({ store, request = (message, options) => requestProgres
       }
       let result;
       try { result = await request({ protocolVersion: PROTOCOL_VERSION, type: action, key, expectedRevision: args.expectedRevision, record: args.record,
+        ...(action === 'app-update-info' && typeof args.force === 'boolean' ? { force: args.force } : {}),
         ...(action === 'locate-source' ? { source: { turnId: args.source?.turnId, itemId: args.source?.itemId } } : {}) }, options); }
       catch (error) { result = { error: error.message, errorInfo: errorDetails(error, undefined, lang) }; }
       if (result.error) {

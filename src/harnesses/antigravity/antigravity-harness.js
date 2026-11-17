@@ -1039,12 +1039,13 @@
       return;
     }
 
-    // 宿主桥代发写操作（保存、清除、分析）
+    // 宿主桥代发写操作（保存、清除、分析、版本更新）
     if (data.type === 'AGENT_THINGS_ACTION_PROXY') {
       const { nonce, action, payload } = data;
       if (!nonce) return;
       try {
         const key = JSON.stringify(['local', boundConvId]);
+        const isUpdateAction = action === 'app-update-info' || action === 'app-update-start';
         let rpcMsg = null;
         if (action === 'update') {
           rpcMsg = { type: 'update', key, record: payload.record, expectedRevision: payload.expectedRevision, requestId: 'proxy-update-' + Date.now() };
@@ -1052,6 +1053,15 @@
           rpcMsg = { type: 'clear', key, expectedRevision: payload.expectedRevision, requestId: 'proxy-clear-' + Date.now() };
         } else if (action === 'analyze') {
           rpcMsg = { type: 'analyze', key, requestId: 'proxy-analyze-' + Date.now() };
+        } else if (action === 'app-update-info') {
+          rpcMsg = {
+            type: 'app-update-info',
+            key,
+            ...(typeof payload?.force === 'boolean' ? { force: payload.force } : {}),
+            requestId: 'proxy-update-info-' + Date.now(),
+          };
+        } else if (action === 'app-update-start') {
+          rpcMsg = { type: 'app-update-start', key, requestId: 'proxy-update-start-' + Date.now() };
         }
         if (rpcMsg) {
           const res = await fetch(`${getServiceOrigin()}/rpc`, {
@@ -1060,6 +1070,18 @@
             body: JSON.stringify(rpcMsg),
           });
           const reply = await res.json();
+          if (isUpdateAction) {
+            sendReplyToCard(binding, targetPort, {
+              type: 'AGENT_THINGS_ACTION_RESULT',
+              nonce,
+              action,
+              success: !reply.error,
+              error: reply.error || null,
+              updateInfo: reply.updateInfo || null,
+              data: { updateInfo: reply.updateInfo || null, lang: reply.lang },
+            });
+            return;
+          }
           if (reply.snapshot) {
             window.__codexSessionStatus?.receive?.(reply.snapshot);
           }

@@ -299,7 +299,7 @@ app.page('/', () => {
   const lang = readConfiguredLang();
   const ui = getActiveUi(lang);
   const hostTheme = readConfiguredHostTheme();
-  const bootstrapScript = `<script>window.__agentThingsLang=${JSON.stringify(lang)};window.__agentThingsHostTheme=${JSON.stringify(hostTheme)};window.__agentThingsI18n=${JSON.stringify({
+  const bootstrapScript = `<script>window.__agentThingsLang=${JSON.stringify(lang)};window.__agentThingsHostTheme=${JSON.stringify(hostTheme)};window.__agentThingsUpdateBannerState=${ui.updateBannerState.toString()};window.__agentThingsI18n=${JSON.stringify({
     lang,
     labels: ui.labels,
     taskLabels: ui.taskLabels,
@@ -412,7 +412,7 @@ app.api(
   'GET'
 );
 
-// 代理交互操作 (analyze, save, update, clear)
+// 代理交互操作 (analyze, save, update, clear, app-update-info, app-update-start)
 app.api(
   '/api/action',
   async (body) => {
@@ -420,14 +420,22 @@ app.api(
     const convId = (body?.conversationId || '').trim();
     const action = body?.action;
     const payload = body?.payload || {};
-    const key = JSON.stringify(['local', convId]);
+    const isUpdateAction = action === 'app-update-info' || action === 'app-update-start';
 
-    if (!convId || !action) {
+    if (!action || (!isUpdateAction && !convId)) {
       return new Response(JSON.stringify({ error: sidecarMsg(lang, '缺少会话标识或操作类型', 'Missing conversation ID or action') }), { contentType: 'application/json', status: 400 });
     }
 
+    const key = convId ? JSON.stringify(['local', convId]) : undefined;
     try {
-      if (action === 'analyze') {
+      if (action === 'app-update-info' || action === 'app-update-start') {
+        const res = await requestDaemon('/rpc', 'POST', {
+          requestId: `tb-act-${Date.now()}`,
+          type: action,
+          ...(action === 'app-update-info' && typeof payload?.force === 'boolean' ? { force: payload.force } : {}),
+        });
+        return res;
+      } else if (action === 'analyze') {
         const res = await requestDaemon('/rpc', 'POST', {
           requestId: `tb-act-${Date.now()}`,
           type: 'analyze',

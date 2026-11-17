@@ -1,6 +1,6 @@
 {
   "name": "agent-things",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Session task progress and checklists for ChatGPT, Antigravity and Claude Desktop on macOS.",
   "license": "MIT",
   "author": "snuffpic",

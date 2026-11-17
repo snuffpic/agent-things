@@ -28,6 +28,26 @@ test('browser and Mods use the same generated presentation and progress rules', 
     assert.equal(target.analysisDisabled(false, true, null), true);
     assert.equal(target.analysisDisabled(false, false, 'installing'), true);
     assert.equal(target.analysisDisabled(false, false, null), false);
+    const idleBanner = target.updateBannerState({ currentVersion: '1.3.2', latestVersion: '1.3.2', available: false }, expected.strings);
+    assert.equal(idleBanner.visible, false);
+    assert.equal(idleBanner.showVersionBar, true);
+    assert.equal(idleBanner.versionText, 'v1.3.2');
+    assert.equal(idleBanner.checkButtonText, '检查更新');
+    const latestBanner = target.updateBannerState({ currentVersion: '1.3.2', latestVersion: '1.3.2', available: false }, expected.strings, { manualCheckStatus: 'latest' });
+    assert.equal(latestBanner.versionText, '当前已是最新版 v1.3.2');
+    const failedCheck = target.updateBannerState({ currentVersion: '1.3.2', available: false }, expected.strings, { manualCheckStatus: 'failed', checkError: 'offline' });
+    assert.equal(failedCheck.checkFailed, true);
+    assert.match(failedCheck.versionText, /检查更新失败.*offline/);
+    const availBanner = target.updateBannerState({ currentVersion: '1.3.2', latestVersion: '1.3.3', available: true }, expected.strings);
+    assert.equal(availBanner.visible, true);
+    assert.equal(availBanner.showVersionBar, false);
+    assert.equal(availBanner.label, '发现新版本 v1.3.3');
+    assert.equal(availBanner.buttonText, '立即升级');
+    const doneBanner = target.updateBannerState({ currentVersion: '1.3.3', available: false, update: { stage: 'completed', currentVersion: '1.3.3', reconnectMcp: true, updatedAt: new Date().toISOString() } }, expected.strings);
+    assert.equal(doneBanner.visible, true);
+    assert.equal(doneBanner.completed, true);
+    assert.equal(doneBanner.label, '已升级至 v1.3.3');
+    assert.equal(doneBanner.detail, expected.strings.reconnectMcpHint);
   }
   assert.ok(file.includes(createPresentation.toString()), 'Generated Mods module must match the shared source');
 });

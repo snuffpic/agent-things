@@ -7,7 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const vm = require('node:vm');
 const { execFileSync } = require('node:child_process');
-const { newerVersion, checkForUpdate, downloadRelease } = require('../src/npm-updates.cjs');
+const { CHECK_INTERVAL_MS, newerVersion, checkForUpdate, downloadRelease } = require('../src/npm-updates.cjs');
 
 function temporary(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-update-test-'));
@@ -187,7 +187,8 @@ test('launchd update job is independent of host services and duplicate starts ar
   await assert.rejects(fixture.api.startUpdate(), /正在进行/);
 });
 
-test('automatic checks persist a daily cache and concurrent checks share one request', async t => {
+test('automatic checks persist an hourly cache and concurrent checks share one request', async t => {
+  assert.equal(CHECK_INTERVAL_MS, 3600000);
   const fixture = worker(t, archive(t));
   const [a, b] = await Promise.all([fixture.api.getUpdateInfo(), fixture.api.getUpdateInfo()]);
   assert.equal(a.latestVersion, '1.1.0');
@@ -196,12 +197,19 @@ test('automatic checks persist a daily cache and concurrent checks share one req
   assert.equal(fixture.network.checks, 1);
   await fixture.api.getUpdateInfo();
   assert.equal(fixture.network.checks, 1);
-  await fixture.api.getUpdateInfo({ force: true });
-  assert.equal(fixture.network.checks, 2);
   const cache = path.join(fixture.data, 'npm-version-check.json');
   const data = JSON.parse(fs.readFileSync(cache));
-  data.attemptedAt = '2020-01-01T00:00:00.000Z';
+  // 30 minutes ago still hits hourly cache
+  data.attemptedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   fs.writeFileSync(cache, JSON.stringify(data));
+  await fixture.api.getUpdateInfo();
+  assert.equal(fixture.network.checks, 1);
+  await fixture.api.getUpdateInfo({ force: true });
+  assert.equal(fixture.network.checks, 2);
+  // 61 minutes ago expires hourly cache automatically
+  const expired = JSON.parse(fs.readFileSync(cache));
+  expired.attemptedAt = new Date(Date.now() - 61 * 60 * 1000).toISOString();
+  fs.writeFileSync(cache, JSON.stringify(expired));
   await fixture.api.getUpdateInfo();
   assert.equal(fixture.network.checks, 3);
 });

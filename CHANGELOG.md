@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.3 (2026-11-17)
+
+- **One-click updates & manual checks across every surface**: Added the `.app-update` banner (`Update available` / `Upgrade` / stage progress / retry / MCP reconnect hint) and wired `app-update-info` / `app-update-start` RPC proxying to both Antigravity inline `/things` cards (`src/antigravity-card.cjs`, `antigravity-harness.js`) and the Antigravity Things side panel (`things_board/main.mjs` & `index.html`).
+- **Lightweight version footer with instant `Check updates`**: Added a subtle bottom `.version-bar` across the floating status panel, Codex MCP card, Antigravity inline card, Things side panel, and Claude Mod card/pane (`register.js`), powered by a shared `updateBannerState` helper (`ui-foundation.cjs`) that switches seamlessly into the upgrade banner when a newer version is found via `force: true`.
+- **1-hour version cache & Claude alignment**: Reduced automatic npm check caching from 24 hours to 1 hour (`CHECK_INTERVAL_MS = 3600000` in `src/npm-updates.cjs`), forwarded `force` through `codex-card.cjs`, `codex-card-bridge.js`, and `claude-service.cjs`, and aligned Claude Mod hourly re-checks plus upgrade completion messages.
+
+---
+
+- **全端补齐「立即升级」与「检查更新」能力**：为 Antigravity 对话内 `/things` 卡片（`src/antigravity-card.cjs`、宿主代理 `antigravity-harness.js`）以及 Antigravity Things 侧边栏面板（`things_board/main.mjs`、`index.html`）完整接入 `app-update-info` / `app-update-start` 链路与底部升级条 UI。
+- **底部轻量版本号栏 + 主动检查更新**：基于 `src/ui-foundation.cjs` 抽离的共享状态机 `updateBannerState`，在悬浮状态面板、Codex MCP 卡片、Antigravity 内联卡片、Things 侧边栏与 Claude 会话卡片/扩展面板统一新增极简 `.version-bar`（显示当前版本号 + `检查更新` 按钮）；平时克制不占空间，点击 `检查更新`（传 `force: true` 绕过缓存）若发现新版立即原地无缝切换为 `发现新版本 vX.Y.Z · 立即升级`。
+- **缓存周期缩短为 1 小时 & Claude 插件对齐**：将后台自动检查 npm 版本的缓存窗口从 24 小时缩短为 1 小时（`src/npm-updates.cjs`）；补全 Codex MCP 卡片工具（`codex-card.cjs` / `codex-card-bridge.js`）与 Claude `inline` 接口的 `force` 参数透传，并对齐 Claude 插件的长会话周期检查、升级阶段与完成重连提示。
+
 ## 1.3.2 (2026-11-17)
 
 - **Task titles displayed clearly across all panels**: Unified the floating status panel (`src/session-status.js`) and the Claude `/things` Mod card to display the full `task.title` before falling back to `task.summary`—matching Antigravity cards and preventing short status remarks from hiding what the task actually is.

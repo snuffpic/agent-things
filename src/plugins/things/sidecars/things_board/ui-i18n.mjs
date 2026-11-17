@@ -244,6 +244,11 @@ export const createPresentation = function createPresentation(lang) {
       updateFailedLabel: '升级失败',
       upgradeBtn: '立即升级',
       upgradingShort: '正在升级…',
+      checkUpdateBtn: '检查更新',
+      checkingUpdateShort: '正在检查…',
+      alreadyLatestPattern: '当前已是最新版 v{version}',
+      versionTagPattern: 'v{version}',
+      checkUpdateFailedLabel: '检查更新失败',
       pleaseWait: '请稍候',
       completedShort: '已完成',
       retryBtn: '重试',
@@ -433,6 +438,11 @@ export const createPresentation = function createPresentation(lang) {
       updateFailedLabel: 'Upgrade failed',
       upgradeBtn: 'Upgrade',
       upgradingShort: 'Upgrading...',
+      checkUpdateBtn: 'Check updates',
+      checkingUpdateShort: 'Checking...',
+      alreadyLatestPattern: 'Up to date (v{version})',
+      versionTagPattern: 'v{version}',
+      checkUpdateFailedLabel: 'Update check failed',
       pleaseWait: 'Please wait',
       completedShort: 'Done',
       retryBtn: 'Retry',
@@ -522,6 +532,72 @@ export const createPresentation = function createPresentation(lang) {
   function analysisDisabled(busy, analyzing, upgradeStage) {
     return Boolean(busy || analyzing || ['waiting', 'installing'].includes(upgradeStage));
   }
+  function updateBannerState(info, dict, options = {}) {
+    const textDict = dict || {};
+    const fmtText = (template, vars = {}) => String(template || '').replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : ''));
+    const update = info?.update;
+    const stage = update?.stage;
+    const stages = textDict.updateStages || {
+      queued: 'Preparing upgrade',
+      checking: 'Checking version',
+      downloading: 'Downloading update',
+      waiting: 'Waiting for analysis to finish',
+      installing: 'Upgrading',
+    };
+    const activeStage = Boolean(stages[stage]) || Boolean(options.starting);
+    const updatedAtMs = update?.updatedAt ? Date.parse(update.updatedAt) : NaN;
+    const now = options.now ?? Date.now();
+    const completed = stage === 'completed' && Number.isFinite(updatedAtMs) && now - updatedAtMs < 60000;
+    const failed = stage === 'failed';
+    const visible = Boolean(info?.available || activeStage || failed || completed);
+    const command = info?.command || 'npx agent-things@latest';
+    const label = activeStage
+      ? (stages[stage] || stages.queued)
+      : failed
+        ? fmtText(textDict.updateFailedLabel || 'Upgrade failed')
+        : completed
+          ? fmtText(textDict.upgradedToPattern || 'Upgraded to v{version}', { version: update?.currentVersion || '' })
+          : fmtText(textDict.updateAvailablePattern || 'Update available v{version}', { version: info?.latestVersion || '' });
+    const buttonText = activeStage
+      ? (textDict.pleaseWait || 'Please wait')
+      : completed
+        ? (textDict.completedShort || 'Done')
+        : failed
+          ? (textDict.retryBtn || 'Retry')
+          : (textDict.upgradeBtn || 'Upgrade');
+    const detail = options.connectionError
+      ? `${textDict.reconnectHint || ''}\n${textDict.terminalUpgradePrefix || ''}${command}`
+      : failed
+        ? `${update?.error || ''}\n${textDict.terminalUpgradePrefix || ''}${command}`
+        : (completed && update?.reconnectMcp ? (textDict.reconnectMcpHint || '') : '');
+    const currentVersion = info?.currentVersion || '';
+    const checkFailed = !visible && options.manualCheckStatus === 'failed';
+    let versionText = currentVersion ? fmtText(textDict.versionTagPattern || 'v{version}', { version: currentVersion }) : '';
+    if (checkFailed) {
+      const errText = options.checkError || info?.checkError || '';
+      versionText = errText ? `${textDict.checkUpdateFailedLabel || 'Update check failed'}: ${errText}` : (textDict.checkUpdateFailedLabel || 'Update check failed');
+    } else if (!visible && options.manualCheckStatus === 'latest' && currentVersion) {
+      versionText = fmtText(textDict.alreadyLatestPattern || 'Up to date (v{version})', { version: currentVersion });
+    }
+    const checking = Boolean(options.checking);
+    return {
+      visible,
+      active: activeStage,
+      completed,
+      failed,
+      buttonDisabled: activeStage || completed,
+      label,
+      buttonText,
+      detail,
+      currentVersion,
+      versionText,
+      showVersionBar: !visible,
+      checking,
+      checkDisabled: checking,
+      checkFailed,
+      checkButtonText: checking ? (textDict.checkingUpdateShort || 'Checking...') : (textDict.checkUpdateBtn || 'Check updates'),
+    };
+  }
 
   const active = forLang(currentLang);
   return {
@@ -544,6 +620,7 @@ export const createPresentation = function createPresentation(lang) {
     progressState,
     draftTransition,
     analysisDisabled,
+    updateBannerState,
   };
 };
 export function getUiForLang(lang) {

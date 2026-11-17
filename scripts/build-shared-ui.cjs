@@ -5,7 +5,7 @@ const { createPresentation } = require('../src/ui-foundation.cjs');
 
 function buildSharedUi() {
   const target = path.join(__dirname, '../mods/agent-things-ui/hooks/foundation.js');
-  const source = `// Generated from src/ui-foundation.cjs. Edit the shared source.\nconst presentation = (${createPresentation.toString()})();\nexport const { lang, labels, colors, taskLabels, strings, locales, layout, accent, claudeCodeThemes, normalizeHexColor, resolveAccentPalette, t, format, forLang, formatDate, progressValue, progressState, draftTransition, analysisDisabled } = presentation;\n`;
+  const source = `// Generated from src/ui-foundation.cjs. Edit the shared source.\nconst presentation = (${createPresentation.toString()})();\nexport const { lang, labels, colors, taskLabels, strings, locales, layout, accent, claudeCodeThemes, normalizeHexColor, resolveAccentPalette, t, format, forLang, formatDate, progressValue, progressState, draftTransition, analysisDisabled, updateBannerState } = presentation;\n`;
   fs.writeFileSync(target, source);
 
   const sidecarI18nTarget = path.join(__dirname, '../src/plugins/things/sidecars/things_board/ui-i18n.mjs');

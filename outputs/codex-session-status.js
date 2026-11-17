@@ -347,6 +347,11 @@ function createPresentation(lang) {
       updateFailedLabel: '升级失败',
       upgradeBtn: '立即升级',
       upgradingShort: '正在升级…',
+      checkUpdateBtn: '检查更新',
+      checkingUpdateShort: '正在检查…',
+      alreadyLatestPattern: '当前已是最新版 v{version}',
+      versionTagPattern: 'v{version}',
+      checkUpdateFailedLabel: '检查更新失败',
       pleaseWait: '请稍候',
       completedShort: '已完成',
       retryBtn: '重试',
@@ -536,6 +541,11 @@ function createPresentation(lang) {
       updateFailedLabel: 'Upgrade failed',
       upgradeBtn: 'Upgrade',
       upgradingShort: 'Upgrading...',
+      checkUpdateBtn: 'Check updates',
+      checkingUpdateShort: 'Checking...',
+      alreadyLatestPattern: 'Up to date (v{version})',
+      versionTagPattern: 'v{version}',
+      checkUpdateFailedLabel: 'Update check failed',
       pleaseWait: 'Please wait',
       completedShort: 'Done',
       retryBtn: 'Retry',
@@ -625,6 +635,72 @@ function createPresentation(lang) {
   function analysisDisabled(busy, analyzing, upgradeStage) {
     return Boolean(busy || analyzing || ['waiting', 'installing'].includes(upgradeStage));
   }
+  function updateBannerState(info, dict, options = {}) {
+    const textDict = dict || {};
+    const fmtText = (template, vars = {}) => String(template || '').replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : ''));
+    const update = info?.update;
+    const stage = update?.stage;
+    const stages = textDict.updateStages || {
+      queued: 'Preparing upgrade',
+      checking: 'Checking version',
+      downloading: 'Downloading update',
+      waiting: 'Waiting for analysis to finish',
+      installing: 'Upgrading',
+    };
+    const activeStage = Boolean(stages[stage]) || Boolean(options.starting);
+    const updatedAtMs = update?.updatedAt ? Date.parse(update.updatedAt) : NaN;
+    const now = options.now ?? Date.now();
+    const completed = stage === 'completed' && Number.isFinite(updatedAtMs) && now - updatedAtMs < 60000;
+    const failed = stage === 'failed';
+    const visible = Boolean(info?.available || activeStage || failed || completed);
+    const command = info?.command || 'npx agent-things@latest';
+    const label = activeStage
+      ? (stages[stage] || stages.queued)
+      : failed
+        ? fmtText(textDict.updateFailedLabel || 'Upgrade failed')
+        : completed
+          ? fmtText(textDict.upgradedToPattern || 'Upgraded to v{version}', { version: update?.currentVersion || '' })
+          : fmtText(textDict.updateAvailablePattern || 'Update available v{version}', { version: info?.latestVersion || '' });
+    const buttonText = activeStage
+      ? (textDict.pleaseWait || 'Please wait')
+      : completed
+        ? (textDict.completedShort || 'Done')
+        : failed
+          ? (textDict.retryBtn || 'Retry')
+          : (textDict.upgradeBtn || 'Upgrade');
+    const detail = options.connectionError
+      ? `${textDict.reconnectHint || ''}\n${textDict.terminalUpgradePrefix || ''}${command}`
+      : failed
+        ? `${update?.error || ''}\n${textDict.terminalUpgradePrefix || ''}${command}`
+        : (completed && update?.reconnectMcp ? (textDict.reconnectMcpHint || '') : '');
+    const currentVersion = info?.currentVersion || '';
+    const checkFailed = !visible && options.manualCheckStatus === 'failed';
+    let versionText = currentVersion ? fmtText(textDict.versionTagPattern || 'v{version}', { version: currentVersion }) : '';
+    if (checkFailed) {
+      const errText = options.checkError || info?.checkError || '';
+      versionText = errText ? `${textDict.checkUpdateFailedLabel || 'Update check failed'}: ${errText}` : (textDict.checkUpdateFailedLabel || 'Update check failed');
+    } else if (!visible && options.manualCheckStatus === 'latest' && currentVersion) {
+      versionText = fmtText(textDict.alreadyLatestPattern || 'Up to date (v{version})', { version: currentVersion });
+    }
+    const checking = Boolean(options.checking);
+    return {
+      visible,
+      active: activeStage,
+      completed,
+      failed,
+      buttonDisabled: activeStage || completed,
+      label,
+      buttonText,
+      detail,
+      currentVersion,
+      versionText,
+      showVersionBar: !visible,
+      checking,
+      checkDisabled: checking,
+      checkFailed,
+      checkButtonText: checking ? (textDict.checkingUpdateShort || 'Checking...') : (textDict.checkUpdateBtn || 'Check updates'),
+    };
+  }
 
   const active = forLang(currentLang);
   return {
@@ -647,6 +723,7 @@ function createPresentation(lang) {
     progressState,
     draftTransition,
     analysisDisabled,
+    updateBannerState,
   };
 }
 
@@ -1373,7 +1450,7 @@ function installCodexSessionStatus(version, restored, embedded) {
     panelEvent('close', panel.entry);
     const target = panel; panel = null;
     clearTimeout(target.pollTimer); cancelAnimationFrame(target.marqueeFrame);
-    clearTimeout(target.updateTimer);
+    clearTimeout(target.updateTimer); clearTimeout(target.manualCheckTimer);
     target.resizeObserver?.disconnect();
     target.root.remove(); target.entry.button.setAttribute('aria-expanded', 'false');
     if (restoreFocus && target.entry.host.isConnected) target.entry.button.focus();
@@ -1408,6 +1485,7 @@ function installCodexSessionStatus(version, restored, embedded) {
       .note-label{display:block;font-size:11px;color:var(--secondary);margin-bottom:8px}textarea{display:block;width:100%;resize:vertical;min-height:66px;max-height:140px;background:var(--input-bg);color:inherit;border:1px solid var(--input-border);border-radius:8px;padding:9px;line-height:1.6;font-size:12px;scrollbar-width:none;-ms-overflow-style:none}textarea::-webkit-scrollbar{display:none;width:0;height:0}textarea::placeholder{color:var(--muted)}.edit-actions{display:flex;justify-content:flex-end;gap:18px;align-items:center;padding:21px 0 16px}.git{font-size:11px;color:var(--secondary)}.analysis-message{font-size:11px;color:var(--secondary);margin:0 0 13px}.analysis-message:empty,.error:empty,.git:empty{display:none}.error{flex:none;font-size:12px;color:var(--error);padding-top:10px;white-space:pre-wrap}button:disabled,input:disabled,textarea:disabled{opacity:.55;cursor:wait}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       .shell textarea:focus-visible{outline:none}
       .app-update{margin-top:3px;padding:10px 11px;background:var(--hover);border:1px solid var(--line);border-radius:10px}.app-update-row{display:flex;align-items:center;justify-content:space-between;gap:10px}.app-update-label{font-size:12px;line-height:18px;color:var(--ink);min-width:0;overflow-wrap:anywhere}.app-update-button{flex:none;padding:5px 10px;min-height:28px;border-radius:7px;font-size:11px}.app-update-detail{margin-top:7px;font-size:11px;line-height:1.6;color:var(--secondary);white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}.app-update[data-failed=true] .app-update-detail{color:var(--error)}
+      .version-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0 2px;font-size:11px;line-height:16px;color:var(--muted)}.version-bar-text{min-width:0;overflow-wrap:anywhere}.version-bar[data-failed=true] .version-bar-text{color:var(--error)}.version-check-button{flex:none;font-size:11px;color:var(--muted)}.version-check-button:hover:not(:disabled){color:inherit}
       :host([data-color-mode=light]){--ink:#22272e;--secondary:#576374;--muted:#667383;--note:#46515f;--track:#dfe4ea;--line:#dfe4ea;--input-border:#c7d0da;--input-bg:#f7f9fb;--hover:#f0f3f6;--selected:#e9edf2;--source-bg:#e9eef4;--number-line:#b6c1ce;--thumb:#ffffff;--danger:#bf2f3a;--error:#b13a2d;color:var(--ink);color-scheme:light}
       :host([data-color-mode=light]) .shell{--panel-bg:#fff;border-color:#dfe4ea;box-shadow:0 14px 45px #26344520}
       :host([data-color-mode=light]) .shell:hover{--panel-bg:#f5f6f7}
@@ -1478,6 +1556,9 @@ function installCodexSessionStatus(version, restored, embedded) {
     const appUpdateLabel = element('span', null, appUpdateRow, 'app-update-label'); appUpdateLabel.setAttribute('role', 'status');
     const appUpdateButton = element('button', S('upgradeBtn'), appUpdateRow, 'primary app-update-button');
     const appUpdateDetail = element('div', null, appUpdate, 'app-update-detail'); appUpdateDetail.hidden = true;
+    const versionBar = element('div', null, overview, 'version-bar'); versionBar.hidden = true;
+    const versionBarText = element('span', null, versionBar, 'version-bar-text'); versionBarText.setAttribute('role', 'status');
+    const checkUpdateButton = element('button', S('checkUpdateBtn'), versionBar, 'text-button version-check-button');
     const edit = element('div', null, body, 'view edit-view'); edit.hidden = true;
     const editHeading = element('div', null, edit, 'view-heading'); const editHeadingTitle = element('h3', S('editHeading'), editHeading);
     const choices = new Map(), choiceLabels = new Map(), controls = [];
@@ -1563,6 +1644,8 @@ function installCodexSessionStatus(version, restored, embedded) {
       if (timelineBackBtn) timelineBackBtn.textContent = S('backLabel');
       resolveConflict.textContent = S('resolveConflictBtn');
       target.tasksKey = null; target.completedKey = null; target.timelineRevision = null;
+      if (target.updateInfo || target.updateChecking || target.manualCheckStatus) showAppUpdate(target.updateInfo);
+      else checkUpdateButton.textContent = S('checkUpdateBtn');
     };
     target.capabilities = embedded?.session?.capabilities || null;
     panelEvent('open', entry);
@@ -1576,24 +1659,58 @@ function installCodexSessionStatus(version, restored, embedded) {
     resolveConflict.onclick = () => rebaseDraft(target);
     const showAppUpdate = info => {
       target.updateInfo = info;
-      const update = info?.update;
-      const stage = update?.stage;
-      const stages = strings.updateStages || { queued: '正在准备升级', checking: '正在检查版本', downloading: '正在下载新版本', waiting: '等待当前分析结束', installing: '正在升级' };
-      const active = Boolean(stages[stage]) || target.upgradeStarting;
-      const completed = stage === 'completed' && Date.now() - Date.parse(update.updatedAt) < 60000;
-      const failed = stage === 'failed';
-      appUpdate.hidden = !info?.available && !active && !failed && !completed;
-      appUpdate.setAttribute('data-failed', String(failed));
-      appUpdateLabel.textContent = active ? stages[stage] || stages.queued : failed ? S('updateFailedLabel') : completed
-        ? S('upgradedToPattern', { version: update.currentVersion }) : S('updateAvailablePattern', { version: info?.latestVersion });
-      appUpdateButton.textContent = active ? S('pleaseWait') : completed ? S('completedShort') : failed ? S('retryBtn') : S('upgradeBtn');
-      appUpdateButton.disabled = active || completed;
-      const command = info?.command || 'npx agent-things@latest';
-      appUpdateDetail.textContent = target.updateConnectionError ? `${S('reconnectHint')}\n${S('terminalUpgradePrefix')}${command}`
-        : failed ? `${update.error}\n${S('terminalUpgradePrefix')}${command}` : completed && update.reconnectMcp ? S('reconnectMcpHint') : '';
+      const options = {
+        starting: target.upgradeStarting,
+        checking: target.updateChecking,
+        connectionError: target.updateConnectionError,
+        manualCheckStatus: target.manualCheckStatus,
+        checkError: target.manualCheckError,
+      };
+      const banner = presentation?.updateBannerState
+        ? presentation.updateBannerState(info, strings, options)
+        : (() => {
+            const update = info?.update;
+            const stage = update?.stage;
+            const stages = strings.updateStages || { queued: '正在准备升级', checking: '正在检查版本', downloading: '正在下载新版本', waiting: '等待当前分析结束', installing: '正在升级' };
+            const active = Boolean(stages[stage]) || Boolean(options.starting);
+            const completed = stage === 'completed' && Date.now() - Date.parse(update.updatedAt) < 60000;
+            const failed = stage === 'failed';
+            const visible = Boolean(info?.available || active || failed || completed);
+            const command = info?.command || 'npx agent-things@latest';
+            return {
+              visible,
+              active,
+              completed,
+              failed,
+              buttonDisabled: active || completed,
+              label: active ? stages[stage] || stages.queued : failed ? S('updateFailedLabel') : completed
+                ? S('upgradedToPattern', { version: update?.currentVersion }) : S('updateAvailablePattern', { version: info?.latestVersion }),
+              buttonText: active ? S('pleaseWait') : completed ? S('completedShort') : failed ? S('retryBtn') : S('upgradeBtn'),
+              detail: options.connectionError ? `${S('reconnectHint')}\n${S('terminalUpgradePrefix')}${command}`
+                : failed ? `${update?.error || ''}\n${S('terminalUpgradePrefix')}${command}` : completed && update?.reconnectMcp ? S('reconnectMcpHint') : '',
+              versionText: options.manualCheckStatus === 'failed'
+                ? `${S('checkUpdateFailedLabel')}${options.checkError ? `: ${options.checkError}` : ''}`
+                : (options.manualCheckStatus === 'latest' && info?.currentVersion ? S('alreadyLatestPattern', { version: info.currentVersion }) : (info?.currentVersion ? `v${info.currentVersion}` : '')),
+              showVersionBar: !visible,
+              checkDisabled: Boolean(options.checking),
+              checkFailed: !visible && options.manualCheckStatus === 'failed',
+              checkButtonText: options.checking ? S('checkingUpdateShort') : S('checkUpdateBtn'),
+            };
+          })();
+      appUpdate.hidden = !banner.visible;
+      appUpdate.setAttribute('data-failed', String(banner.failed));
+      appUpdateLabel.textContent = banner.label;
+      appUpdateButton.textContent = banner.buttonText;
+      appUpdateButton.disabled = banner.buttonDisabled;
+      appUpdateDetail.textContent = banner.detail;
       appUpdateDetail.hidden = !appUpdateDetail.textContent;
+      versionBar.hidden = !(banner.showVersionBar && (info || banner.checking || banner.checkFailed));
+      versionBar.setAttribute('data-failed', String(banner.checkFailed));
+      versionBarText.textContent = banner.versionText;
+      checkUpdateButton.textContent = banner.checkButtonText;
+      checkUpdateButton.disabled = banner.checkDisabled;
       refreshPanel();
-      return active;
+      return banner.active;
     };
     const pollAppUpdate = async () => {
       clearTimeout(target.updateTimer);
@@ -1601,6 +1718,10 @@ function installCodexSessionStatus(version, restored, embedded) {
         const info = await target.request('app-update-info', 12000);
         if (panel !== target) return;
         target.updateConnectionError = null;
+        if (info?.available) {
+          target.manualCheckStatus = '';
+          target.manualCheckError = '';
+        }
         const active = showAppUpdate(info);
         target.updateTimer = setTimeout(pollAppUpdate, active ? 2000 : 60000);
       } catch (error) {
@@ -1608,6 +1729,41 @@ function installCodexSessionStatus(version, restored, embedded) {
         target.updateConnectionError = error.message;
         if (target.updateInfo) showAppUpdate(target.updateInfo);
         target.updateTimer = setTimeout(pollAppUpdate, 2000);
+      }
+    };
+    checkUpdateButton.onclick = async () => {
+      if (target.updateChecking || checkUpdateButton.disabled) return;
+      clearTimeout(target.updateTimer);
+      clearTimeout(target.manualCheckTimer);
+      target.updateChecking = true;
+      target.manualCheckStatus = '';
+      target.manualCheckError = '';
+      showAppUpdate(target.updateInfo);
+      try {
+        const info = await target.request('app-update-info', 12000, { force: true });
+        if (panel !== target) return;
+        target.updateChecking = false;
+        target.updateConnectionError = null;
+        if (info?.checkError && !info?.available) {
+          target.manualCheckStatus = 'failed';
+          target.manualCheckError = info.checkError;
+        } else if (!info?.available) {
+          target.manualCheckStatus = 'latest';
+          target.manualCheckTimer = setTimeout(() => {
+            if (panel !== target || target.manualCheckStatus !== 'latest') return;
+            target.manualCheckStatus = '';
+            showAppUpdate(target.updateInfo);
+          }, 5000);
+        }
+        const active = showAppUpdate(info);
+        target.updateTimer = setTimeout(pollAppUpdate, active ? 2000 : 60000);
+      } catch (error) {
+        if (panel !== target) return;
+        target.updateChecking = false;
+        target.manualCheckStatus = 'failed';
+        target.manualCheckError = error.message;
+        showAppUpdate(target.updateInfo);
+        target.updateTimer = setTimeout(pollAppUpdate, 60000);
       }
     };
     appUpdateButton.onclick = async () => {
@@ -1935,7 +2091,7 @@ function installCodexSessionStatus(version, restored, embedded) {
     },
     destroy() {
       destroyed = true; localCards?.destroy(); harness?.dispose?.(); observer.disconnect(); rootObserver?.disconnect(); headObserver?.disconnect(); cancelAnimationFrame(frame);
-      if (panel) { rememberPanel(panel); panelEvent('dispose', panel.entry); clearTimeout(panel.pollTimer); clearTimeout(panel.updateTimer); cancelAnimationFrame(panel.marqueeFrame); panel.resizeObserver?.disconnect(); panel.root.remove(); panel.entry.button?.setAttribute('aria-expanded', 'false'); panel = null; }
+      if (panel) { rememberPanel(panel); panelEvent('dispose', panel.entry); clearTimeout(panel.pollTimer); clearTimeout(panel.updateTimer); clearTimeout(panel.manualCheckTimer); cancelAnimationFrame(panel.marqueeFrame); panel.resizeObserver?.disconnect(); panel.root.remove(); panel.entry.button?.setAttribute('aria-expanded', 'false'); panel = null; }
       for (const entry of [...mounted.values()]) unmount(entry);
       document.removeEventListener('pointerdown', onOutside, true); document.removeEventListener('keydown', onKey, true);
       document.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', positionPanel);

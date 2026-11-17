@@ -233,7 +233,11 @@ class ClaudeService {
       const reply = await this.rpc({ type: 'analyze', key, requestId: message.requestId });
       if (reply.error) throw Object.assign(new Error(reply.error), reply.errorInfo || {});
     } else if (message.action === 'update-info' || message.action === 'upgrade') {
-      const reply = await this.rpc({ type: message.action === 'upgrade' ? 'app-update-start' : 'app-update-info', requestId: message.requestId });
+      const reply = await this.rpc({
+        type: message.action === 'upgrade' ? 'app-update-start' : 'app-update-info',
+        ...(message.action === 'update-info' && message.force === true ? { force: true } : {}),
+        requestId: message.requestId,
+      });
       if (reply.error) throw Object.assign(new Error(reply.error), reply.errorInfo || {});
       return { updateInfo: reply.updateInfo, lang };
     } else if (message.action !== 'read') throw new Error(en ? 'Unknown card action' : '未知卡片操作');

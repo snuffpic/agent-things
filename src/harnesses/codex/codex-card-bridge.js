@@ -70,7 +70,7 @@
     installCodexSessionStatus('codex-mcp-app', null, {
       container, key, title, snapshot, analysisState, session, theme, lang: initial.lang || snapshot?.lang,
       async send(payload) {
-        const { type, requestId, expectedRevision, record, source, cancelRequestId } = JSON.parse(payload);
+        const { type, requestId, expectedRevision, record, source, cancelRequestId, force } = JSON.parse(payload);
         if (type === 'panel-event') return;
         if (type === 'cancel-request') {
           for (const [id, entry] of pending) if (entry.uiRequestId === cancelRequestId) {
@@ -82,6 +82,7 @@
         const name = readActions.has(type) ? 'read_session_card' : 'change_session_card';
         try {
           const result = await request('tools/call', { name, arguments: { conversation_id: conversationId, card_token: cardToken, action: type,
+            ...(typeof force === 'boolean' ? { force } : {}),
             ...(expectedRevision == null ? {} : { expectedRevision }), ...(record === undefined ? {} : { record }), ...(source ? { source } : {}) } }, 18000, requestId);
           const errorInfo = result.structuredContent?.errorInfo;
           const error = result.isError || !result.structuredContent ? result.content?.[0]?.text || uiText('cardOpFailed', '卡片操作失败') : undefined;
@@ -121,7 +122,7 @@
     }
   });
 
-  request('ui/initialize', { appInfo: { name: 'agent-things', version: window.__agentThingsVersion || '1.3.2' }, appCapabilities: {}, protocolVersion: '2026-01-26' }, 5000)
+  request('ui/initialize', { appInfo: { name: 'agent-things', version: window.__agentThingsVersion || '1.3.3' }, appCapabilities: {}, protocolVersion: '2026-01-26' }, 5000)
     .then(result => {
       theme = result?.hostContext?.theme;
       if (theme === 'light' || theme === 'dark') {

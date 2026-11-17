@@ -189,3 +189,28 @@ test('wide Pane passes adaptive width to slider and uses aspect-preserved SVGs a
   assert.ok(saveSvg.props.width < 4096 && saveSvg.props.width >= 80);
   assert.match(saveSvg.props.source, /preserveAspectRatio="xMidYMid meet"/);
 });
+
+test('Claude inline card and Pane display full task.title before task.summary so status remarks never hide the task name', async t => {
+  const payload = {
+    revision: 5,
+    key: '["local","desktop"]',
+    title: '任务标题优先级检查',
+    record: { revision: 5, state: 'unfinished', progress: 50, source: 'analysis', note: '', updatedAt: Date.now() },
+    analysis: {
+      ledger: {
+        tasks: [
+          { id: 't-1', title: '修复Linux无工作区时插件守卫策略报错', summary: '待用户定是否修', status: 'todo' },
+          { id: 't-2', title: '', summary: '兜底短标题展示', status: 'in_progress' },
+        ],
+      },
+    },
+    timeline: [],
+    projectGit: { hasRemote: false },
+  };
+  const { renderPane } = await loadHooks(t, payload);
+  const tree = await renderPane(34);
+  const renderedTexts = findNodes(tree, node => node.type === 'Text').flatMap(n => n.children || []);
+  assert.ok(renderedTexts.includes('修复Linux无工作区时插件守卫策略报错'));
+  assert.equal(renderedTexts.includes('待用户定是否修'), false);
+  assert.ok(renderedTexts.includes('兜底短标题展示'));
+});

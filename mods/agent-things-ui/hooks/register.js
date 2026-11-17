@@ -264,7 +264,7 @@ async function draw($, e, inPane) {
     const unknownTaskLabel = taskLabels.unknown || t('taskLabels')?.unknown || (activeLang === 'en' ? 'Unknown status' : '状态未知');
     const taskRow = task => Box({ key: `task-${task.id}`, position: 'relative', flexDirection: 'row', alignItems: 'center', width: '100%', gap: 1, children: [
       text(task.status === 'done' ? '✓' : '○', { color: task.status === 'done' ? colors.completed : colors.unfinished }),
-      Box({ flexDirection: 'column', flexGrow: 1, minWidth: 0, children: [text(task.summary || task.title), Svg({ source: svg(`<text x="0" y="11" font-size="10" fill="currentColor" opacity=".68">${taskLabels[task.status] || unknownTaskLabel}</text>`, taskLabelWidth, 15, 'xMinYMid meet'), alt: taskLabels[task.status] || unknownTaskLabel, width: taskLabelWidth, height: 15 })] }),
+      Box({ flexDirection: 'column', flexGrow: 1, minWidth: 0, children: [text(task.title || task.summary), Svg({ source: svg(`<text x="0" y="11" font-size="10" fill="currentColor" opacity=".68">${taskLabels[task.status] || unknownTaskLabel}</text>`, taskLabelWidth, 15, 'xMinYMid meet'), alt: taskLabels[task.status] || unknownTaskLabel, width: taskLabelWidth, height: 15 })] }),
       Box({ position: 'absolute', right: 0, top: 0, height: '100%', justifyContent: 'center', alignItems: 'flex-end', display: 'none', hover: { display: 'flex' }, children: [button(`source-${task.id}`, t('viewSource'), () => operate($, 'source', { taskId: task.id }), { plain: true })] }),
     ] });
     const content = [];

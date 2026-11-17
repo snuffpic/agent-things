@@ -69,3 +69,8 @@ test('light-mode flash prevention invariants across Codex, Antigravity, and Clau
   assert.ok(/class="\(\?:dark\|light\)"/.test(agyHarnessSrc), 'isOfficialWrapper must allow both dark and light official wrappers');
   assert.ok(agyHarnessSrc.includes('__agentThingsHostTheme'));
 });
+
+test('panel task rows prefer full task.title over task.summary', () => {
+  assert.ok(source.includes('const text = task.title || task.summary;'), 'session-status.js must prefer full task.title');
+  assert.ok(!source.includes('const text = task.summary || task.title;'));
+});

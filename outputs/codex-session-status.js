@@ -1709,7 +1709,7 @@ function installCodexSessionStatus(version, restored, embedded) {
       element('span', null, row, 'task-dot'); const content = element('div', null, row, 'task-content');
       const title = element('div', null, content, 'task-title'); title.title = task.title;
       const track = element('div', null, title, 'task-track');
-      const text = task.summary || task.title;
+      const text = task.title || task.summary;
       element('span', text, track, 'task-copy');
       element('div', taskLabels[task.status] || S('taskUnknown'), content, 'task-meta');
       const ref = task.evidenceRefs?.find(value => sources?.[value]?.turnId);

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.2 (2026-11-17)
+
+- **Task titles displayed clearly across all panels**: Unified the floating status panel (`src/session-status.js`) and the Claude `/things` Mod card to display the full `task.title` before falling back to `task.summary`—matching Antigravity cards and preventing short status remarks from hiding what the task actually is.
+- **Cleaner Claude transcript extraction**: Filtered out `isMeta` internal prompt injections, stripped leading Claude Code machine envelopes (`<system-reminder>`, `<task-notification>`, `<side-sessions-event>`, `<local-command-caveat>`, slash-command tags) across multi-part messages without losing user replies, and trimmed compaction resume boilerplate and raw `.jsonl` paths from compact summaries.
+- **Tighter analysis prompts & schemas (`v5`)**: Added explicit field descriptions in `output.schema.json` and `output.en.schema.json`, tightened bilingual analysis rules so both `title` and short `summary` must name "action + target" rather than status/deferral notes, and bumped `versions.prompt` / `versions.schema` to `5` so existing sessions cleanly refresh on the next update.
+- **Release CI fix**: Fixed `npm publish ./dist/*.tgz` path resolution in `.github/workflows/release.yml` for npm 11+.
+
+---
+
+- **三端统一优先展示完整任务标题**：将悬浮状态面板（`src/session-status.js`）与 Claude `/things` 对话内卡片统一为优先展示 `task.title`（无标题时再回退 `task.summary`），与 Antigravity 保持一致，避免“待定”“未做，待安排”等短批注盖住具体任务名称。
+- **净化 Claude 会话清洗结构**：过滤 `isMeta` 内部系统注入消息，按消息分块剥离 Claude Code 前导机器信封（`<system-reminder>`、`<task-notification>`、`<side-sessions-event>`、`<local-command-caveat>` 及内置命令标签）且无损保留用户正文发言，并移除上下文压缩摘要首尾英文恢复套话与本地 `.jsonl` 路径。
+- **加固分析提示词与 Schema 约束（`v5`）**：为中英文 Output Schema 补充 `title` 与 `summary` 字段职责说明，收紧提示词规则明确要求两者均须采用“动作 + 对象”短标题、严禁写入纯状态批注，并将规则版本升至 `5`，以便旧会话下次“更新进度”时同步纠正历史偏差。
+- **发布工作流修复**：修复 `.github/workflows/release.yml` 在 npm 11+ 下缺少 `./` 前缀导致 `npm publish` 误判文件路径为仓库名的问题。
+
 ## 1.3.1 (2026-11-17)
 
 - **Theme accent colors and UI polish**: Progress panels, inline `/things` cards, and the Antigravity side panel now follow each host client's active accent color (ChatGPT `--color-ring-primary`, Antigravity `customThemeSeeds`, and Claude Desktop Code's 32 Appearance themes across light and dark modes) with automatic foreground contrast protection. Refined button, progress slider, tooltip, and panel interaction transitions.

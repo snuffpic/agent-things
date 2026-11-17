@@ -121,7 +121,7 @@
     }
   });
 
-  request('ui/initialize', { appInfo: { name: 'agent-things', version: window.__agentThingsVersion || '1.3.1' }, appCapabilities: {}, protocolVersion: '2026-01-26' }, 5000)
+  request('ui/initialize', { appInfo: { name: 'agent-things', version: window.__agentThingsVersion || '1.3.2' }, appCapabilities: {}, protocolVersion: '2026-01-26' }, 5000)
     .then(result => {
       theme = result?.hostContext?.theme;
       if (theme === 'light' || theme === 'dark') {

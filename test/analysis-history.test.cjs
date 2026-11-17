@@ -166,3 +166,21 @@ test('summary validation identifies the task and reports the character count and
     return true;
   });
 });
+
+test('Claude leading machine envelopes are stripped while quoted examples remain data', () => {
+  const history = make([turn('t1', [
+    user('meta1', '<local-command-caveat>ignore this local caveat</local-command-caveat>'),
+    user('cmd1', '<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>claude-haiku</command-args>'),
+    user('cmdout', '<local-command-stdout>Set model to claude-haiku</local-command-stdout>'),
+    user('notif', '<task-notification>\n<task-id>abc</task-id>\n<summary>Agent done</summary>\n</task-notification>'),
+    user('sys1', '<system-reminder>sub-session update</system-reminder>\n\n按你的方案继续实现'),
+    user('quoted', '请帮我解释这个标签：\n<system-reminder>示例正文</system-reminder>'),
+    answer('a1', '<system-reminder>internal note</system-reminder>\n已完成实现'),
+  ])]);
+  assert.deepEqual(history.events.map(e => e.text), [
+    '按你的方案继续实现',
+    '请帮我解释这个标签：\n<system-reminder>示例正文</system-reminder>',
+    '已完成实现',
+  ]);
+  assert.doesNotMatch(JSON.stringify(history.events), /ignore this|claude-haiku|task-notification|sub-session update|internal note/);
+});

@@ -1,9 +1,21 @@
 'use strict';
 const crypto = require('node:crypto');
+const { stripLeadingEnvelopes } = require('../../analysis-history.cjs');
 
-function textContent(content) {
-  if (typeof content === 'string') return content;
-  return Array.isArray(content) ? content.filter(part => part.type === 'text').map(part => part.text || '').join('\n') : '';
+function textContent(content, { stripEnvelopes = false } = {}) {
+  const cleanPart = text => (stripEnvelopes ? stripLeadingEnvelopes(text) : String(text || ''));
+  if (typeof content === 'string') return cleanPart(content);
+  return Array.isArray(content)
+    ? content.filter(part => part?.type === 'text').map(part => cleanPart(part.text || '')).filter(Boolean).join('\n')
+    : '';
+}
+
+function cleanCompactSummary(text) {
+  let value = String(text || '').trim();
+  value = value.replace(/^This session is being continued from a previous conversation[\s\S]*?(?=<system-reminder>|\bSummary:)/i, '');
+  value = stripLeadingEnvelopes(value);
+  value = value.replace(/\n+(?:If you need specific details from before compaction|Continue the conversation from where it left off|Please continue the conversation|If you are working with the user|The messages after this summary are the most recent messages from before compaction)[\s\S]*$/i, '').trim();
+  return value ? `[前情摘要]\n${value}` : '';
 }
 
 function transcriptTurns(result) {
@@ -21,9 +33,10 @@ function appendTranscriptEntry(turns, entry) {
 function cleanTranscriptMessage(entry) {
   const message = entry.message || entry;
   const role = message.role || entry.type;
-  if (!['user', 'assistant'].includes(role) || entry.isSidechain) return null;
+  if (!['user', 'assistant'].includes(role) || entry.isSidechain || entry.isMeta) return null;
   if (role === 'assistant' && message.stop_reason && message.stop_reason !== 'end_turn') return null;
-  const original = textContent(message.content);
+  let original = textContent(message.content, { stripEnvelopes: true });
+  if (role === 'user' && entry.isCompactSummary) original = cleanCompactSummary(original);
   const text = original.length > 24000 ? `${original.slice(0, 12000)}\n[内容已精简]\n${original.slice(-12000)}` : original;
   if (!text.trim()) return null;
   const id = entry.uuid || entry.id;

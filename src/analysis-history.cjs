@@ -46,12 +46,28 @@ function dehydrateTerminalLogs(text) {
   return compacted.join('\n');
 }
 
-// Strip only recognized machine envelopes; quoted XML and ordinary human text remain data.
-function cleanMessage(text) {
-  let value = text.trim();
-  const leading = /^<(heartbeat|in-app-browser-context|send_user_message_question_reply)\b[^>]*>([\s\S]*?)<\/\1>/;
+const MACHINE_ENVELOPE_TAGS = [
+  'heartbeat',
+  'in-app-browser-context',
+  'send_user_message_question_reply',
+  'system-reminder',
+  'task-notification',
+  'side-sessions-event',
+  'local-command-caveat',
+  'command-name',
+  'command-message',
+  'command-args',
+  'local-command-stdout',
+  'tools-used-before-summary',
+].join('|');
+
+const LEADING_ENVELOPE_RE = new RegExp(`^<(${MACHINE_ENVELOPE_TAGS})\\b[^>]*>([\\s\\S]*?)<\\/\\1>`);
+
+// Strip only recognized leading machine envelopes; quoted XML and ordinary human text remain data.
+function stripLeadingEnvelopes(text) {
+  let value = String(text || '').trim();
   let match;
-  while ((match = value.match(leading))) {
+  while ((match = value.match(LEADING_ENVELOPE_RE))) {
     let replacement = '';
     if (match[1] === 'send_user_message_question_reply') {
       try {
@@ -63,6 +79,11 @@ function cleanMessage(text) {
     value = (replacement + '\n' + value.slice(match[0].length)).trim();
     if (replacement) break;
   }
+  return value;
+}
+
+function cleanMessage(text) {
+  let value = stripLeadingEnvelopes(text);
   // 仅应用规则 1 (代码块脱水) 与 规则 3 (终端日志脱水)，智能体正文汇报完整保留
   value = dehydrateCodeBlocks(value);
   value = dehydrateTerminalLogs(value);
@@ -147,4 +168,4 @@ function commitCheckpoint(extracted, ledger, versions) {
     versions: { prompt: versions.prompt, schema: versions.schema, ledger: versions.ledger },
     turnHashes: extracted.turnHashes, ledger };
 }
-module.exports = { extractHistory, prepareIncremental, commitCheckpoint };
+module.exports = { extractHistory, prepareIncremental, commitCheckpoint, stripLeadingEnvelopes, cleanMessage };

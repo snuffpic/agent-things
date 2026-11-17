@@ -193,3 +193,37 @@ test('closing a Claude panel does not cancel analysis and later manual marks rem
   assert.equal(service.store.snapshot().records[key].source, 'manual');
   assert.equal(service.store.analysisState(key).analysis.ledger.tasks.length, 1);
 });
+
+test('Claude transcript sanitization drops isMeta, strips multi-part reminders, cleans compact summaries, and avoids phantom turns', () => {
+  const mixed = [
+    {
+      uuid: 'compact-1',
+      type: 'user',
+      isCompactSummary: true,
+      message: {
+        content: 'This session is being continued from a previous conversation that ran out of context.\n\n<system-reminder>\n<tools-used-before-summary>Read, Bash</tools-used-before-summary>\n</system-reminder>\nSummary:\n1. Primary Request: 实现干净任务标题。\n\nIf you need specific details from before compaction, read the full transcript at: /tmp/secret.jsonl\nContinue the conversation from where it left off without asking the user.',
+      },
+    },
+    { uuid: 'meta-1', type: 'user', isMeta: true, message: { content: '<system-reminder>hidden meta reminder</system-reminder>' } },
+    { uuid: 'cmd-1', type: 'user', message: { content: '<command-name>/reload-plugins</command-name>' } },
+    { uuid: 'notif-1', type: 'user', message: { content: '<task-notification><task-id>t1</task-id></task-notification>' } },
+    {
+      uuid: 'real-u1',
+      type: 'user',
+      message: {
+        content: [
+          { type: 'text', text: '<system-reminder>\nThe session "子任务" finished.\n</system-reminder>' },
+          { type: 'text', text: '按新方案修复标题和清洗逻辑' },
+        ],
+      },
+    },
+    { uuid: 'real-a1', type: 'assistant', message: { stop_reason: 'end_turn', content: [{ type: 'text', text: '已完成修复' }] } },
+  ];
+  const turns = transcriptTurns(mixed);
+  assert.equal(turns.length, 2);
+  const summaryText = turns[0].items[0].content[0].text;
+  assert.match(summaryText, /^\[前情摘要\]\nSummary:/);
+  assert.doesNotMatch(summaryText, /tools-used-before-summary|secret\.jsonl|Continue the conversation/);
+  assert.equal(turns[1].items[0].content[0].text, '按新方案修复标题和清洗逻辑');
+  assert.equal(turns[1].items[1].text, '已完成修复');
+});

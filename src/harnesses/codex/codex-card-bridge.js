@@ -108,13 +108,31 @@
       mount();
     } else if (data.method === 'ui/notifications/host-context-changed') {
       theme = data.params?.theme;
+      if (theme === 'light' || theme === 'dark') {
+        document.documentElement.style.colorScheme = theme;
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+      const hostAccent = data.params?.styles?.variables?.['--color-ring-primary'];
+      if (hostAccent) {
+        window.__agentThingsHostAccent = hostAccent;
+        document.documentElement.style.setProperty('--agent-things-accent', hostAccent);
+      }
       window.__codexSessionStatus?.setTheme(theme);
     }
   });
 
-  request('ui/initialize', { appInfo: { name: 'agent-things', version: window.__agentThingsVersion || '1.1.1' }, appCapabilities: {}, protocolVersion: '2026-01-26' }, 5000)
+  request('ui/initialize', { appInfo: { name: 'agent-things', version: window.__agentThingsVersion || '1.3.1' }, appCapabilities: {}, protocolVersion: '2026-01-26' }, 5000)
     .then(result => {
       theme = result?.hostContext?.theme;
+      if (theme === 'light' || theme === 'dark') {
+        document.documentElement.style.colorScheme = theme;
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+      const hostAccent = result?.hostContext?.styles?.variables?.['--color-ring-primary'];
+      if (hostAccent) {
+        window.__agentThingsHostAccent = hostAccent;
+        document.documentElement.style.setProperty('--agent-things-accent', hostAccent);
+      }
       ready = true;
       notify('ui/notifications/initialized', {});
       mount();

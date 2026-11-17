@@ -108,5 +108,5 @@ export default function controls(props, surface) {
   const buttonWidth = props.action === 'clear'
     ? (props.label === '清除进度' || !props.label ? 64 : measureClearWidth(props.label))
     : measureButtonWidth(props.label);
-  return { type: 'Svg', props: { source: props.action === 'clear' ? clearButton(state.hovered, state.pressed, props.label, buttonWidth) : primary(props.label, props.disabled, state.hovered, state.pressed && state.hovered, buttonWidth), alt: props.label, width: buttonWidth, height: props.action === 'clear' ? 28 : 36 } };
+  return { type: 'Svg', props: { source: props.action === 'clear' ? clearButton(state.hovered, state.pressed, props.label, buttonWidth) : primary(props.label, props.disabled, state.hovered, state.pressed && state.hovered, buttonWidth, props.accent || null), alt: props.label, width: buttonWidth, height: props.action === 'clear' ? 28 : 36 } };
 }

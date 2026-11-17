@@ -1,6 +1,20 @@
 # Changelog
 
-## 1.2.2 (unreleased)
+## 1.3.1 (2026-11-17)
+
+- **Theme accent colors and UI polish**: Progress panels, inline `/things` cards, and the Antigravity side panel now follow each host client's active accent color (ChatGPT `--color-ring-primary`, Antigravity `customThemeSeeds`, and Claude Desktop Code's 32 Appearance themes across light and dark modes) with automatic foreground contrast protection. Refined button, progress slider, tooltip, and panel interaction transitions.
+- **No light-mode first-frame flash**: Added pre-paint color-scheme initialization, immediate host theme sync, and fallback light rules across the floating panel, Codex MCP card, Antigravity inline card, and Things side panel (`--at-panel-bg`).
+- **Faster `/things` and Antigravity card fixes**: Switched Antigravity `/things` hooks to a single-turn `ephemeralMessage` fast-path with duplicate-invocation guards and eager `render_things_card` registration across both `~/.gemini/antigravity/mcp_config.json` and `~/.gemini/config/mcp_config.json`; inline `/things` cards now auto-resize smoothly to full height, stay isolated when the Things side panel is open, sync manual edits/clears immediately into the inline card without waiting for SSE, and open the side panel without reloading when already mounted.
+- **Claude Desktop i18n fix**: Bundled `ui-foundation` presentation data into Claude's host helper with an inline fallback and completed missing dictionary keys so labels switch cleanly between English and Simplified Chinese.
+
+---
+
+- **主题强调色联动与界面打磨**：状态面板、对话内 `/things` 卡片及 Antigravity Things 侧栏现自动跟随宿主客户端当前主题色（ChatGPT `--color-ring-primary`、Antigravity `customThemeSeeds` 与 Claude Desktop Code 的 32 套浅色/深色代码主题），并自动计算高对比度按钮前景色；同步优化按钮、进度滑块、提示浮层及面板交互动效。
+- **消除浅色模式首帧闪烁**：为悬浮状态面板、Codex MCP 卡片、Antigravity 内联卡片与 Things 侧栏（修复 `--at-panel-bg` 拼写）加入渲染前配色初始化、同步 `<head>` 主题检测与浅色兜底样式。
+- **Antigravity `/things` 提速与卡片/侧栏修复**：为 `/things` 接入单轮 `ephemeralMessage` 快速通道（带 `invocationNum` 防重入保护），并在 `~/.gemini/antigravity/mcp_config.json` 与 `~/.gemini/config/mcp_config.json` 中启用 `render_things_card` 的 `eager` 原生工具配置；修复内联卡片高度被宿主截断在 200px 的问题（自动撑开至完整高度）、修复侧栏与内联卡片共存隔离、修复在卡片内手动保存/清除进度时本地视图与侧边/SSE 同步竞态，并在侧栏已挂载时无重载复用打开。
+- **Claude Desktop 双语修复**：在 Claude 宿主注入链中加载 `ui-foundation` 字典并提供内嵌兜底，补全缺失的多语言键名，修复切换中英文时局部文本回退或缺失的问题。
+
+## 1.2.2 (2026-11-15)
 
 - The npm package page now shows the English README; the Chinese README moved to `docs/README.zh-CN.md` and is linked from the top of the English one.
 - Analysis tests no longer depend on ChatGPT.app being installed, and the browser check tolerates slower CI machines.

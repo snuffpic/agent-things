@@ -4,7 +4,98 @@ export const createPresentation = function createPresentation(lang) {
   const currentLang = normalizeLang(lang ?? (typeof globalThis !== 'undefined' ? globalThis.__agentThingsLang : undefined));
   const colors = { unstarted: '#9098a2', unfinished: '#c89b38', completed: '#548eea', pushed: '#a17be3' };
   const layout = { contentWidth: 300, panelWidth: 340, progressNodes: [0, 25, 50, 75, 100] };
-  const accent = { normal: '#0169CC', hover: '#005bb3', pressed: '#004f9c' };
+  const accent = { normal: '#0169CC', hover: '#005bb3', pressed: '#004f9c', onAccent: '#FFFFFF' };
+  const claudeCodeThemes = {
+    'claude-light': '#C6613F',
+    'claude-dark': '#D97757',
+    'github-light': '#0969DA',
+    'github-light-high-contrast': '#0550AE',
+    'github-dark': '#1F6FEB',
+    'github-dark-dimmed': '#316DCA',
+    'github-dark-high-contrast': '#409EFF',
+    'pierre-light': '#0073E6',
+    'pierre-dark': '#0087EE',
+    'vscode-light': '#007ACC',
+    'vscode-dark': '#007ACC',
+    'one-light': '#4078F2',
+    'one-dark-pro': '#61AFEF',
+    'catppuccin-latte': '#8839EF',
+    'catppuccin-mocha': '#CBA6F7',
+    'solarized-light': '#268BD2',
+    'solarized-dark': '#268BD2',
+    'vitesse-light': '#4D9375',
+    'vitesse-dark': '#4D9375',
+    'min-light': '#256ABF',
+    'min-dark': '#5598E7',
+    'rose-pine-dawn': '#D7827E',
+    'rose-pine': '#EA9A97',
+    'slack-ochin': '#1264A3',
+    'slack-dark': '#36C5F0',
+    'dracula': '#BD93F9',
+    'dracula-soft': '#BD93F9',
+    'nord': '#88C0D0',
+    'monokai': '#F92672',
+    'tokyo-night': '#7AA2F7',
+    'night-owl': '#82AAFF',
+    'ayu-dark': '#E6B450',
+  };
+
+  function normalizeHexColor(value, fallback = null) {
+    if (typeof value !== 'string') return fallback;
+    const raw = value.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toUpperCase();
+    if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
+      return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`.toUpperCase();
+    }
+    const rgbMatch = raw.match(/^rgba?\(\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})/i);
+    if (rgbMatch) {
+      const toHex = n => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, '0');
+      return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`.toUpperCase();
+    }
+    return fallback;
+  }
+
+  function hexToRgb(hex) {
+    const clean = normalizeHexColor(hex, '#0169CC').slice(1);
+    return [
+      parseInt(clean.slice(0, 2), 16),
+      parseInt(clean.slice(2, 4), 16),
+      parseInt(clean.slice(4, 6), 16),
+    ];
+  }
+
+  function getRelativeLuminance(hex) {
+    const [r, g, b] = hexToRgb(hex).map(channel => {
+      const srgb = channel / 255;
+      return srgb <= 0.03928 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function mixHexColors(hexA, hexB, weightA) {
+    const [r1, g1, b1] = hexToRgb(hexA);
+    const [r2, g2, b2] = hexToRgb(hexB);
+    const wA = Math.max(0, Math.min(1, weightA));
+    const wB = 1 - wA;
+    const toHex = n => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+    return `#${toHex(r1 * wA + r2 * wB)}${toHex(g1 * wA + g2 * wB)}${toHex(b1 * wA + b2 * wB)}`.toUpperCase();
+  }
+
+  function resolveAccentPalette(rawColor, { isDark = true, fallback = '#0169CC' } = {}) {
+    const normal = normalizeHexColor(rawColor, normalizeHexColor(fallback, '#0169CC'));
+    const lum = getRelativeLuminance(normal);
+    const onAccent = lum > 0.45 ? '#0D0D0D' : '#FFFFFF';
+    // Darken bright accents or shade toward dark/light ink subtly without losing hue identity.
+    const mixTarget = lum > 0.45 ? '#000000' : (isDark ? '#FFFFFF' : '#000000');
+    const hoverWeight = lum > 0.45 ? 0.88 : (isDark ? 0.88 : 0.88);
+    const pressedWeight = lum > 0.45 ? 0.78 : (isDark ? 0.78 : 0.78);
+    return {
+      normal,
+      hover: mixHexColors(normal, mixTarget, hoverWeight),
+      pressed: mixHexColors(normal, mixTarget, pressedWeight),
+      onAccent,
+    };
+  }
 
   const locales = {
     zh: {
@@ -183,6 +274,18 @@ export const createPresentation = function createPresentation(lang) {
       hookPresentedMessage: '已呈现当前会话任务进度卡片',
       noSessionBadge: '无会话',
       offlineBadge: '离线',
+      badgeNotOrganized: '未整理',
+      badgeProgressUnrecordedSuffix: ' · 进度未记录',
+      ringAriaPattern: '{title}：{summary}，点击记录任务进展',
+      ringUpdating: '正在更新进度',
+      sessionFallbackTitle: '会话',
+      statusUnrecorded: '尚未记录进展',
+      panelAriaPattern: '{title} 任务进展',
+      totalsEmpty: '暂无任务统计',
+      taskUnknown: '状态未知',
+      timelineAnalysis: '自动分析',
+      timelineManual: '手动记录',
+      unrecordedShort: '未记录',
     },
     en: {
       appTitle: 'Agent Things',
@@ -360,6 +463,18 @@ export const createPresentation = function createPresentation(lang) {
       hookPresentedMessage: 'Session task progress card presented',
       noSessionBadge: 'No session',
       offlineBadge: 'Offline',
+      badgeNotOrganized: 'Not organized',
+      badgeProgressUnrecordedSuffix: ' · Progress unrecorded',
+      ringAriaPattern: '{title}: {summary}. Click to track progress',
+      ringUpdating: 'Updating progress',
+      sessionFallbackTitle: 'Session',
+      statusUnrecorded: 'No progress recorded',
+      panelAriaPattern: '{title} Task Progress',
+      totalsEmpty: 'No task metrics yet',
+      taskUnknown: 'Unknown status',
+      timelineAnalysis: 'Auto analysis',
+      timelineManual: 'Manual record',
+      unrecordedShort: 'Unrecorded',
     },
   };
 
@@ -418,6 +533,9 @@ export const createPresentation = function createPresentation(lang) {
     locales,
     layout,
     accent,
+    claudeCodeThemes,
+    normalizeHexColor,
+    resolveAccentPalette,
     t: active.t,
     format,
     forLang,

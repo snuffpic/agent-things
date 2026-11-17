@@ -130,10 +130,13 @@ function installClaudeHost({ root, credentialFile }) {
     if (refreshing || stopped) return;
     refreshing = true;
     try {
-      const resources = [path.join(root, 'src/harnesses/claude/claude-harness.js'), path.join(root, 'src/session-status.js')];
+      const foundationFile = path.join(root, 'src/ui-foundation.cjs');
+      const resources = [foundationFile, path.join(root, 'src/harnesses/claude/claude-harness.js'), path.join(root, 'src/session-status.js')];
       const stamp = resources.map(file => { const stat = fs.statSync(file); return `${stat.mtimeMs}:${stat.size}`; }).join('|');
       if (stamp !== resourceStamp) {
-        source = resources.map(file => fs.readFileSync(file, 'utf8')).join('\n');
+        const foundationCode = fs.readFileSync(foundationFile, 'utf8');
+        const foundationInit = `(() => { const module = { exports: {} }; ${foundationCode}\nglobalThis.__agentThingsPresentation = module.exports.createPresentation(globalThis.__agentThingsLang); })();`;
+        source = [foundationInit, ...resources.slice(1).map(file => fs.readFileSync(file, 'utf8'))].join('\n');
         lastVersion = crypto.createHash('sha256').update(source).digest('hex'); resourceStamp = stamp;
       }
       for (const w of webContents.getAllWebContents()) if (eligible(w)) watch(w);

@@ -267,18 +267,20 @@ async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'anti
   const claude = require('../../scripts/setup-claude-service.cjs');
   const codexConfig = path.join(home, '.codex/config.toml');
   const agyConfig = path.join(home, '.gemini/antigravity/mcp_config.json');
+  const agyUnifiedConfig = path.join(home, '.gemini/config/mcp_config.json');
   const claudeConfig = path.join(home, '.claude.json');
   if (enabledApps.includes('codex') && !fs.existsSync(codexConfig)) {
     throw new Error(en ? 'Please open ChatGPT.app and sign in to Codex first so its configuration file is created.' : '请先启动 ChatGPT.app 并完成 Codex 登录，以建立配置文件。');
   }
   if (enabledApps.includes('antigravity') && fs.existsSync(agyConfig)) JSON.parse(fs.readFileSync(agyConfig, 'utf8'));
+  if (enabledApps.includes('antigravity') && fs.existsSync(agyUnifiedConfig)) JSON.parse(fs.readFileSync(agyUnifiedConfig, 'utf8'));
   if (enabledApps.includes('claude') && fs.existsSync(claudeConfig)) JSON.parse(fs.readFileSync(claudeConfig, 'utf8'));
   for (const file of [path.join(DATA_DIR, 'manual-state.json'), path.join(home, '.gemini/antigravity/session-status/manual-state.json'), require('../harnesses/claude/claude-service.cjs').DEFAULT_STATE_FILE]) {
     if (fs.existsSync(file) && JSON.parse(fs.readFileSync(file, 'utf8')).timeline?.some(event => event.status === 'pending')) {
       throw new Error(en ? 'Please wait for the active analysis to finish before modifying components.' : '请等待当前分析结束后再修改组件。');
     }
   }
-  const files = [CONFIG_FILE, codexConfig, agyConfig, claudeConfig, PLIST_FILE, agy.PLIST_PATH, claude.PLIST_PATH,
+  const files = [CONFIG_FILE, codexConfig, agyConfig, agyUnifiedConfig, claudeConfig, PLIST_FILE, agy.PLIST_PATH, claude.PLIST_PATH,
     path.join(DATA_DIR, 'bridge'), path.join(DATA_DIR, 'autostart.json'),
     path.join(home, '.codex/skills/agent-things/SKILL.md'),
     path.join(home, '.codex/skills/agent-things-card/SKILL.md'),
@@ -315,10 +317,10 @@ async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'anti
     }
     if (enabledApps.includes('antigravity')) {
       await agy.install({ root: runtime });
-      installAntigravityMcp({ scriptPath: path.join(runtime, 'bin/antigravity-session-status.cjs') });
+      installAntigravityMcp({ homeDirectory: home, scriptPath: path.join(runtime, 'bin/antigravity-session-status.cjs') });
       syncAntigravityHooks(true, { homeDirectory: home, runtime });
     } else {
-      disableAntigravityMcp();
+      disableAntigravityMcp({ homeDirectory: home });
       syncAntigravityHooks(false, { homeDirectory: home, runtime });
     }
     if (enabledApps.includes('claude')) {
@@ -407,7 +409,7 @@ async function uninstallAllUnlocked() {
     await require('../../scripts/setup-antigravity-service.cjs').uninstall();
     await require('../../scripts/setup-claude-service.cjs').uninstall();
     disableCodexMcp({});
-    disableAntigravityMcp();
+    disableAntigravityMcp({ homeDirectory: home });
     disableClaudeMcp();
     const agyPluginDir = path.join(home, '.gemini/config/plugins/things');
     if (fs.existsSync(agyPluginDir)) {

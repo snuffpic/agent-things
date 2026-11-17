@@ -465,3 +465,63 @@ test('Card 专属端口处理 AGENT_THINGS_OPEN_PANE：防越权与成功/失败
     env.dispose?.();
   }
 });
+
+test('侧边栏已打开或具备 setIframeSrc 时零重载打开/唤醒，不触发 onSidecarLinkClick 与 navigateIframe', async () => {
+  const convId = 'conv-no-reload';
+  let onSidecarLinkCalls = 0;
+  let navigateCalls = 0;
+  const setSrcCalls = [];
+  const state = {
+    sidePanel: { conversationPanes: { [convId]: { isPaneOpen: true, activeTabId: 'sidecar__things/things_board__/' } } },
+    sidePanelV2: { conversationPanes: { [convId]: { activeTabId: 'sidecar__things/things_board__/' } } },
+  };
+  const store = {
+    getState: () => state,
+    dispatch(action) {
+      if (action.type === 'sidePanelV2/setContent') {
+        state.sidePanelV2.conversationPanes[convId] = { activeTabId: action.payload.tabId };
+      } else if (action.type === 'sidePanel/setSidePanelOpen') {
+        state.sidePanel.conversationPanes[convId] = {
+          ...(state.sidePanel.conversationPanes[convId] || {}),
+          isPaneOpen: action.payload.isOpen,
+        };
+      }
+    },
+  };
+  const ext = {
+    provider: { getState: () => [createDescriptor()] },
+    resolveSidecarUrl: base => base,
+  };
+  const rootFiber = createFiberChain({
+    store,
+    ext,
+    onSidecarLinkClick: () => { onSidecarLinkCalls++; },
+    sidecarPool: {
+      setIframeSrc: (key, url) => { setSrcCalls.push({ key, url }); },
+      navigateIframe: () => { navigateCalls++; },
+    },
+    router: { navigate: () => {} },
+  });
+
+  const env = createHarnessTestEnv({ convId, rootFiber });
+  try {
+    const resAlready = await env.harness.openPane({ entry: { threadId: convId } });
+    assert.deepEqual(resAlready, { ok: true, method: 'alreadyOpen', conversationId: convId });
+    assert.equal(onSidecarLinkCalls, 0);
+    assert.equal(navigateCalls, 0);
+    assert.equal(setSrcCalls.length, 0);
+
+    // 切到其他 Tab 后重新打开，走 setIframeSrc + Redux 路径而不触发 forceReload / navigateIframe
+    state.sidePanelV2.conversationPanes[convId].activeTabId = 'file__other';
+    const resReopen = await env.harness.openPane({ entry: { threadId: convId } });
+    assert.deepEqual(resReopen, { ok: true, method: 'reduxStore', conversationId: convId });
+    assert.equal(onSidecarLinkCalls, 0);
+    assert.equal(navigateCalls, 0);
+    assert.deepEqual(setSrcCalls, [{
+      key: `http://127.0.0.1:4100/sidecar?conversationId=${convId}`,
+      url: `http://127.0.0.1:4100/sidecar?conversationId=${convId}`,
+    }]);
+  } finally {
+    env.dispose?.();
+  }
+});

@@ -127,9 +127,15 @@
     const prevShadow = bubble.style.boxShadow;
     const prevTransition = bubble.style.transition;
 
-    bubble.style.transition = 'all 0.25s ease';
-    bubble.style.outline = '2px solid #0169cc';
-    bubble.style.boxShadow = '0 0 0 4px rgba(1, 105, 204, 0.25), 0 8px 24px rgba(1, 105, 204, 0.35)';
+    let accentHex = '#2F75C3';
+    try {
+      const rootAccent = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+      if (rootAccent) accentHex = rootAccent;
+    } catch (_) {}
+
+    bubble.style.transition = 'outline-color 200ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 200ms cubic-bezier(0.23, 1, 0.32, 1)';
+    bubble.style.outline = `2px solid ${accentHex}`;
+    bubble.style.boxShadow = `0 0 0 4px color-mix(in srgb, ${accentHex} 25%, transparent), 0 8px 24px color-mix(in srgb, ${accentHex} 35%, transparent)`;
 
     setTimeout(() => {
       bubble.style.outline = prevOutline;
@@ -202,9 +208,10 @@
 
     const seen = new Set();
     const queue = [rootFiber];
+    let head = 0;
     let steps = 0;
-    while (queue.length && steps++ < 6000) {
-      const node = queue.shift();
+    while (head < queue.length && steps++ < 20000) {
+      const node = queue[head++];
       if (!node || seen.has(node)) continue;
       seen.add(node);
       const mp = node.memoizedProps;
@@ -274,31 +281,84 @@
     }
   }
 
+  function isThingsSidecarOpenInStore(store, convId) {
+    if (!store?.getState) return null;
+    try {
+      const st = store.getState();
+      const paneV1 = convId ? st?.sidePanel?.conversationPanes?.[convId] : st?.sidePanel?.homePane;
+      const paneV2 = convId ? st?.sidePanelV2?.conversationPanes?.[convId] : st?.sidePanelV2?.homePane;
+      const activeTabId = paneV2?.activeTabId ?? paneV1?.activeTabId ?? '';
+      if (paneV1?.isPaneOpen === true && typeof activeTabId === 'string' && activeTabId.startsWith(`sidecar__${THINGS_SIDECAR_ID}__`)) {
+        return true;
+      }
+      if (paneV1 || paneV2) return false;
+    } catch (_) {}
+    return null;
+  }
+
   function isThingsSidecarOpen(store, convId) {
-    if (store?.getState) {
-      try {
-        const st = store.getState();
-        const paneV1 = convId ? st?.sidePanel?.conversationPanes?.[convId] : st?.sidePanel?.homePane;
-        const paneV2 = convId ? st?.sidePanelV2?.conversationPanes?.[convId] : st?.sidePanelV2?.homePane;
-        const activeTabId = paneV2?.activeTabId ?? paneV1?.activeTabId ?? '';
-        if (paneV1?.isPaneOpen === true && typeof activeTabId === 'string' && activeTabId.startsWith(`sidecar__${THINGS_SIDECAR_ID}__`)) {
-          return true;
-        }
-      } catch (_) {}
-    }
+    const storeResult = isThingsSidecarOpenInStore(store, convId);
+    if (storeResult !== null) return storeResult;
     if (typeof document !== 'undefined') {
       const slot = document.querySelector(`[data-testid="sidecar-iframe-slot"][data-sidecar-id="${THINGS_SIDECAR_ID}"][data-visible="true"]`);
       if (slot && typeof slot.getBoundingClientRect === 'function' && slot.getBoundingClientRect().width > 0) {
-        return true;
+        const slotUrl = slot.getAttribute?.('data-sidecar-url') || '';
+        if (!slotUrl || !convId || slotUrl.includes(`conversationId=${convId}`)) {
+          return true;
+        }
       }
       const frames = document.querySelectorAll('iframe[data-testid="sidecar-iframe"]');
       for (const frame of frames) {
         if (frame.src?.includes('things--things_board') && typeof frame.getBoundingClientRect === 'function' && frame.getBoundingClientRect().width > 0) {
-          return true;
+          if (!convId || !frame.src.includes('conversationId=') || frame.src.includes(`conversationId=${convId}`)) {
+            return true;
+          }
         }
       }
     }
     return false;
+  }
+
+  function openViaReduxBridge(bridge, descriptor, activeConvId, { avoidReload = true } = {}) {
+    const targetUrl = buildConversationSidecarUrl(descriptor.baseViewUrl, activeConvId);
+    if (avoidReload && typeof bridge.sidecarPool?.setIframeSrc === 'function') {
+      bridge.sidecarPool.setIframeSrc(targetUrl, targetUrl);
+    } else if (typeof bridge.sidecarPool?.navigateIframe === 'function') {
+      bridge.sidecarPool.navigateIframe(descriptor.baseViewUrl, targetUrl);
+    } else if (typeof bridge.sidecarPool?.setIframeSrc === 'function') {
+      bridge.sidecarPool.setIframeSrc(targetUrl, targetUrl);
+    }
+    const treeId = activeConvId ? { kind: 'cascadeId', cascadeId: activeConvId } : { kind: 'home' };
+    const st = bridge.store.getState();
+    const setContentType = st?.sidePanelV2 ? 'sidePanelV2/setContent' : 'sidePanel/setContent';
+    bridge.store.dispatch({
+      type: setContentType,
+      payload: {
+        treeId,
+        content: {
+          type: 'sidecarView',
+          sidecarView: {
+            sidecarId: descriptor.sidecarId,
+            path: descriptor.path,
+            url: descriptor.baseViewUrl,
+            title: descriptor.title,
+          },
+        },
+        tabId: descriptor.tabId,
+      },
+    });
+    bridge.store.dispatch({
+      type: 'sidePanel/setSidePanelOpen',
+      payload: { treeId, isOpen: true },
+    });
+    if (typeof bridge.router?.navigate === 'function') {
+      try {
+        bridge.router.navigate({
+          search: prev => ({ ...(prev || {}), tab: descriptor.tabId }),
+          replace: true,
+        });
+      } catch (_) {}
+    }
   }
 
   async function tryOpenViaDomFallback() {
@@ -373,6 +433,20 @@
         throw new Error(getUiText(null, 'Things sidebar plugin is not enabled. Enable it in Plugins Manager first.', 'Things 侧边栏插件未启用，请先在 Plugins Manager 中启用 Things 插件'));
       }
 
+      if (isThingsSidecarOpen(bridge.store, activeConvId)) {
+        syncSidecarConversation(activeConvId);
+        return { ok: true, method: 'alreadyOpen', conversationId: activeConvId };
+      }
+
+      if (descriptor && bridge.store?.dispatch && typeof bridge.sidecarPool?.setIframeSrc === 'function') {
+        openViaReduxBridge(bridge, descriptor, activeConvId, { avoidReload: true });
+        await waitMs(80);
+        if (isThingsSidecarOpen(bridge.store, activeConvId)) {
+          syncSidecarConversation(activeConvId);
+          return { ok: true, method: 'reduxStore', conversationId: activeConvId };
+        }
+      }
+
       if (bridge.onSidecarLinkClick) {
         bridge.onSidecarLinkClick(THINGS_SIDECAR_ID);
         await waitMs(80);
@@ -383,43 +457,7 @@
       }
 
       if (descriptor && bridge.store?.dispatch) {
-        const targetUrl = buildConversationSidecarUrl(descriptor.baseViewUrl, activeConvId);
-        if (typeof bridge.sidecarPool?.navigateIframe === 'function') {
-          bridge.sidecarPool.navigateIframe(descriptor.baseViewUrl, targetUrl);
-        } else if (typeof bridge.sidecarPool?.setIframeSrc === 'function') {
-          bridge.sidecarPool.setIframeSrc(descriptor.baseViewUrl, targetUrl);
-        }
-        const treeId = activeConvId ? { kind: 'cascadeId', cascadeId: activeConvId } : { kind: 'home' };
-        const st = bridge.store.getState();
-        const setContentType = st?.sidePanelV2 ? 'sidePanelV2/setContent' : 'sidePanel/setContent';
-        bridge.store.dispatch({
-          type: setContentType,
-          payload: {
-            treeId,
-            content: {
-              type: 'sidecarView',
-              sidecarView: {
-                sidecarId: descriptor.sidecarId,
-                path: descriptor.path,
-                url: descriptor.baseViewUrl,
-                title: descriptor.title,
-              },
-            },
-            tabId: descriptor.tabId,
-          },
-        });
-        bridge.store.dispatch({
-          type: 'sidePanel/setSidePanelOpen',
-          payload: { treeId, isOpen: true },
-        });
-        if (typeof bridge.router?.navigate === 'function') {
-          try {
-            bridge.router.navigate({
-              search: prev => ({ ...(prev || {}), tab: descriptor.tabId }),
-              replace: true,
-            });
-          } catch (_) {}
-        }
+        openViaReduxBridge(bridge, descriptor, activeConvId, { avoidReload: false });
         await waitMs(80);
         if (isThingsSidecarOpen(bridge.store, activeConvId)) {
           syncSidecarConversation(activeConvId);
@@ -962,7 +1000,7 @@
         type: data.type === 'AGENT_THINGS_AUTH_REQUEST' ? 'AGENT_THINGS_AUTH_RESPONSE' : 'AGENT_THINGS_ACTION_RESULT',
         nonce: data.nonce,
         success: false,
-        error: getUiText(null, 'Session identity mismatch: cross-session action blocked', '会话身份不匹配：禁止跨会话操作'),
+        error: '会话身份不匹配：禁止跨会话操作',
       });
       return;
     }
@@ -1025,14 +1063,21 @@
           if (reply.snapshot) {
             window.__codexSessionStatus?.receive?.(reply.snapshot);
           }
-          const targetRecord = reply.snapshot?.records?.[key];
-          const sessionData = targetRecord ? {
+          const targetRecord = reply.snapshot?.records?.[key] || null;
+          const targetAnalysis = reply.snapshot?.analysis?.[key] || null;
+          const analysisTasks = Array.isArray(targetAnalysis?.ledger?.tasks) ? targetAnalysis.ledger.tasks : null;
+          const analysisSummary = targetAnalysis?.ledger?.summary || '';
+          const sessionData = {
             conversationId: boundConvId,
-            recordRevision: targetRecord.revision ?? 0,
-            progress: targetRecord.progress ?? null,
-            state: targetRecord.state ?? null,
-            note: targetRecord.note ?? '',
-          } : null;
+            recordRevision: targetRecord?.revision ?? 0,
+            progress: targetRecord ? (targetRecord.progress ?? null) : null,
+            state: targetRecord ? (targetRecord.state ?? null) : 'unstarted',
+            note: targetRecord ? (targetRecord.note ?? '') : '',
+            source: targetRecord?.source || (targetAnalysis ? 'analysis' : 'manual'),
+            updatedAt: targetRecord?.updatedAt || new Date().toISOString(),
+            summary: (targetRecord?.note || analysisSummary) ?? '',
+            ...(analysisTasks ? { tasks: analysisTasks } : {}),
+          };
           sendReplyToCard(binding, targetPort, {
             type: 'AGENT_THINGS_ACTION_RESULT',
             nonce,
@@ -1049,7 +1094,7 @@
           nonce,
           action,
           success: false,
-          error: err.message || getUiText(null, 'Proxy request failed', '代理请求失败'),
+          error: err.message || '代理请求失败',
         });
       }
       return;
@@ -1071,7 +1116,7 @@
             action: 'locate',
             success: Boolean(result?.located),
             data: result,
-            error: result?.located ? undefined : (result?.message || getUiText(null, 'Source message not found', '未找到来源消息')),
+            error: result?.located ? undefined : (result?.message || '未找到来源消息'),
           });
         }
       } catch (err) {
@@ -1081,7 +1126,7 @@
             nonce,
             action: 'locate',
             success: false,
-            error: err?.message || getUiText(null, 'Failed to locate source', '定位来源失败'),
+            error: err?.message || '定位来源失败',
           });
         }
       }
@@ -1109,7 +1154,7 @@
             nonce,
             action: 'open-pane',
             success: false,
-            error: err?.message || getUiText(null, 'Failed to open the sidebar plugin', '打开侧栏插件失败'),
+            error: err?.message || '打开侧栏插件失败',
           });
         }
       }
@@ -1290,14 +1335,21 @@
     }
     const rawContent = String(val);
     const isCard = rawContent.includes('AGENT_THINGS_AUTH_REQUEST') || rawContent.includes('agentThingsCard');
-    const isInAux = !!iframe.closest?.('[data-testid="aux-pane-split"]') || iframe.getAttribute('data-testid') === 'artifact-dynamic-ui-iframe';
+    const testId = iframe.getAttribute?.('data-testid');
+    // 主对话气泡内的 <agent-embed> 会随右侧栏开启而整体位于 aux-pane-split 容器下，不能误按右侧独立工件 Tab 拦截
+    const agentEmbedAncestor = iframe.closest?.('[data-testid="agent-embed"]');
+    const auxSplitAncestor = iframe.closest?.('[data-testid="aux-pane-split"]');
+    const hasDistinctEmbedAncestor = !!agentEmbedAncestor && agentEmbedAncestor !== auxSplitAncestor;
+    const isInlineEmbed = testId === 'agent-embed-iframe'
+      || (hasDistinctEmbedAncestor && testId !== 'artifact-dynamic-ui-iframe');
+    const isInAux = !isInlineEmbed && (!!auxSplitAncestor || testId === 'artifact-dynamic-ui-iframe');
     let currentTab = '';
     try { currentTab = new URL(window.location.href).searchParams.get('tab') || ''; } catch (_) {}
     const isCardTab = currentTab.includes('things-card.html');
 
     if (isCard && (isInAux ? isCardTab : true)) {
       let tabConvId = null;
-      if (isCardTab) {
+      if (isInAux && isCardTab) {
         try {
           const match = currentTab.match(/[/\\\\]([^/\\\\]+)[/\\\\]things-card\.html/i) || currentTab.match(/([^/]+)\/things-card\.html/i);
           if (match) tabConvId = match[1];
@@ -1335,7 +1387,7 @@
 
       // 检查工件文档边界与恶意追加：
       // 若为独立 HTML（非官方外层包装模板），必须严格等于 fullDoc；在 </html> 后追加任何脚本均视为非法篡改
-      const isOfficialWrapper = rawContent.startsWith('<!DOCTYPE html><html class="dark"><head><meta http-equiv="Content-Security-Policy"');
+      const isOfficialWrapper = /^<!DOCTYPE html><html class="(?:dark|light)"><head><meta http-equiv="Content-Security-Policy"/.test(rawContent);
       if (!isOfficialWrapper && rawContent.trim() !== fullDoc.trim()) {
         return originalSet.call(iframe, val);
       }
@@ -1346,7 +1398,7 @@
       // Hold the document until verification completes; no card script runs while awaiting the service.
       return (async () => {
         const isCurrent = () => pendingCardLoads.get(iframe) === controller && !controller.signal.aborted
-          && iframe.isConnected && (isCardTab ? new URL(window.location.href).searchParams.get('tab') === currentTab : true);
+          && iframe.isConnected && (isInAux && isCardTab ? new URL(window.location.href).searchParams.get('tab') === currentTab : true);
         let verifiedDigest;
         try {
           const response = await fetch(`${getServiceOrigin()}/session/verify-artifact`, {
@@ -1364,7 +1416,7 @@
         } catch (_) {
           // An explicit replacement/disposal must never reinstall an obsolete document.
           if (pendingCardLoads.get(iframe) === controller && iframe.isConnected
-            && (isCardTab ? new URL(window.location.href).searchParams.get('tab') === currentTab : true)) originalSet.call(iframe, val);
+            && (isInAux && isCardTab ? new URL(window.location.href).searchParams.get('tab') === currentTab : true)) originalSet.call(iframe, val);
           return;
         } finally { clearTimeout(timeout); }
 
@@ -1384,12 +1436,46 @@
         })) return originalSet.call(iframe, val);
   
         // 以通过校验的工件内容 fullDoc 为唯一渲染输入，彻底剔除外部未经验证的追加字符与脚本
-        const tokenScript = '<script>window.__agentThingsLoadToken = ' + JSON.stringify(dynamicToken) + ';</' + 'script>';
+        let hostAccent = '';
+        let hostAccentFg = '';
+        let hostMode = '';
+        try {
+          const rs = getComputedStyle(document.documentElement);
+          hostAccent = rs.getPropertyValue('--primary').trim();
+          hostAccentFg = rs.getPropertyValue('--primary-foreground').trim();
+          if (document.body?.classList?.contains('theme-light')) hostMode = 'light';
+          else if (document.body?.classList?.contains('theme-dark')) hostMode = 'dark';
+          else {
+            const bg = rs.getPropertyValue('--background').trim();
+            if (bg) {
+              if (bg.startsWith('#') && bg.length >= 7) {
+                const r = parseInt(bg.slice(1, 3), 16), g = parseInt(bg.slice(3, 5), 16), b = parseInt(bg.slice(5, 7), 16);
+                hostMode = (0.299 * r + 0.587 * g + 0.114 * b) > 130 ? 'light' : 'dark';
+              } else if (bg.startsWith('rgb')) {
+                const m = bg.match(/\d+/g);
+                if (m && m.length >= 3) hostMode = (0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]) > 130 ? 'light' : 'dark';
+              }
+            }
+          }
+        } catch (_) {}
+        const tokenScript = '<script>window.__agentThingsLoadToken = ' + JSON.stringify(dynamicToken) + ';'
+          + (hostAccent ? 'window.__agentThingsHostAccent = ' + JSON.stringify(hostAccent) + ';' : '')
+          + (hostAccentFg ? 'window.__agentThingsHostAccentFg = ' + JSON.stringify(hostAccentFg) + ';' : '')
+          + (hostMode ? 'window.__agentThingsHostTheme = ' + JSON.stringify(hostMode) + ';' : '')
+          + '</' + 'script>';
         let modifiedHtml = fullDoc;
         // 彻底清理之前注入过的所有 loadToken 脚本（兼容普通与转义关闭标签）
         modifiedHtml = modifiedHtml
           .replace(/<script[^>]*>window\.__agentThingsLoadToken[\s\S]*?<\/script>/gi, '')
           .replace(/<script[^>]*>window\.__agentThingsLoadToken[\s\S]*?<\\\/script>/gi, '');
+        if (hostMode) {
+          modifiedHtml = modifiedHtml.replace(/<html\b([^>]*)>/i, (_, attrs) => {
+            const cleaned = attrs
+              .replace(/\s+data-color-mode\s*=\s*["'][^"']*["']/gi, '')
+              .replace(/\s+style\s*=\s*["']color-scheme:[^"']*["']/gi, '');
+            return '<html data-color-mode="' + hostMode + '" style="color-scheme:' + hostMode + '"' + cleaned + '>';
+          });
+        }
         if (modifiedHtml.includes('<head>')) {
           modifiedHtml = modifiedHtml.replace('<head>', '<head>' + tokenScript);
         } else {

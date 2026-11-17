@@ -52,7 +52,7 @@ const resource = {
     const renderer = fs.readFileSync(path.join(__dirname, '../../session-status.js'), 'utf8');
     const bridge = fs.readFileSync(path.join(__dirname, 'codex-card-bridge.js'), 'utf8');
     const htmlLang = lang === 'en' ? 'en' : 'zh-CN';
-    return `<!doctype html><html lang="${htmlLang}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><body style="margin:0"><main id="progress-card" aria-live="polite">${t('loadingTitle')}</main><script>window.__agentThingsVersion = ${JSON.stringify(require('../../../package.json').version)};window.__agentThingsLang = ${JSON.stringify(lang)};\n${browserSource}\n${renderer}\n${bridge}</script></body></html>`;
+    return `<!doctype html><html lang="${htmlLang}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{color-scheme:light dark;color:light-dark(#576374,#a0a6ad);background:transparent}body{margin:0;font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#progress-card:empty{display:none}</style><body style="margin:0"><main id="progress-card" aria-live="polite">${t('loadingTitle')}</main><script>window.__agentThingsVersion = ${JSON.stringify(require('../../../package.json').version)};window.__agentThingsLang = ${JSON.stringify(lang)};\n${browserSource}\n${renderer}\n${bridge}</script></body></html>`;
   },
 };
 

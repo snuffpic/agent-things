@@ -1,7 +1,9 @@
 'use strict';
+const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const { ManualStatusStore } = require('../../manual-status-store.cjs');
 const { startProgressHttp } = require('../../local-progress-http.cjs');
 const { callProgressTool } = require('../../progress-tools.cjs');
@@ -18,6 +20,44 @@ const { ClaudeLocalSource } = require('./claude-local-source.cjs');
 const { sessionView, PROTOCOL_VERSION } = require('../../session-view.cjs');
 const { errorDetails } = require('../../progress-error.cjs');
 const { readConfiguredLang, getUi } = require('../../i18n.cjs');
+const { createPresentation } = require('../../ui-foundation.cjs');
+
+const claudePresentation = createPresentation('zh');
+let cachedOsThemeMode = null;
+let cachedOsThemeModeTs = 0;
+function detectOsThemeMode() {
+  const now = Date.now();
+  if (cachedOsThemeMode && now - cachedOsThemeModeTs < 10000) return cachedOsThemeMode;
+  try {
+    const out = execFileSync('defaults', ['read', '-g', 'AppleInterfaceStyle'], {
+      encoding: 'utf8',
+      timeout: 300,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    cachedOsThemeMode = /^dark$/i.test(out) ? 'dark' : 'light';
+  } catch {
+    // On macOS, AppleInterfaceStyle is absent when System Appearance is Light.
+    cachedOsThemeMode = 'light';
+  }
+  cachedOsThemeModeTs = now;
+  return cachedOsThemeMode;
+}
+
+function readClaudeDefaultAccent() {
+  let mode = detectOsThemeMode();
+  try {
+    const cfgPath = path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'config.json');
+    if (fs.existsSync(cfgPath)) {
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+      const rawMode = cfg?.userThemeMode;
+      if (rawMode === 'light' || rawMode === 'dark') mode = rawMode;
+      else if (!rawMode && (cfg?.darkMode === 'light' || cfg?.darkMode === 'dark')) mode = cfg.darkMode;
+    }
+  } catch {}
+  const fallbackHex = mode === 'light' ? '#C6613F' : '#D97757';
+  const palette = claudePresentation.resolveAccentPalette(fallbackHex, { isDark: mode === 'dark', fallback: fallbackHex });
+  return { ...palette, mode, codeTheme: mode === 'light' ? 'claude-light' : 'claude-dark' };
+}
 
 const DEFAULT_PORT = 29889;
 const DEFAULT_STATE_FILE = path.join(os.homedir(), 'Library/Application Support/AgentThings/claude/manual-state.json');
@@ -48,6 +88,7 @@ class ClaudeService {
     this.keyChanges = new Map(); this.keySignatures = new Map(); this.watchers = new Map(); this.loggedReads = new Map();
     this.watchStartRevision = 0;
     this.lastLang = this.currentLang();
+    this.currentAccent = null;
     // 所有写入都经最外层 transaction（write 自身也会进入 transaction）：在其结束后比对各会话的变化。
     const transaction = this.store.transaction.bind(this.store);
     this.store.transaction = operation => {
@@ -68,6 +109,9 @@ class ClaudeService {
   currentLang() {
     if (typeof this.store?.lang === 'function') return this.store.lang();
     return readConfiguredLang({ dataDir: path.dirname(this.stateFile) });
+  }
+  activeAccent() {
+    return this.currentAccent || readClaudeDefaultAccent();
   }
   requestHost(method, threadId, options) {
     const id = crypto.randomUUID();
@@ -118,6 +162,18 @@ class ClaudeService {
     try {
       if (message.type === 'list') { /* Return the current snapshot. */ }
       else if (message.type === 'panel-event') this.log(`panel.${message.action}`, { key: message.key });
+      else if (message.type === 'theme-sync') {
+        const mode = message.mode === 'light' ? 'light' : 'dark';
+        const palette = claudePresentation.resolveAccentPalette(message.accent, {
+          isDark: mode === 'dark',
+          fallback: mode === 'light' ? '#C6613F' : '#D97757',
+        });
+        const nextAccent = { ...palette, mode, codeTheme: typeof message.codeTheme === 'string' ? message.codeTheme : '' };
+        if (JSON.stringify(this.currentAccent) !== JSON.stringify(nextAccent)) {
+          this.currentAccent = nextAccent;
+          for (const k of [...this.watchers.keys()]) this.wakeWatchers(k, { changed: true });
+        }
+      }
       else if (message.type === 'open-pane') {
         if (!this.store.validKey(message.key) || JSON.parse(message.key)[0] !== 'local') throw new Error(en ? 'Invalid Claude session identifier' : '无效 Claude 会话标识');
         pane = { delivered: await this.deliverPane(message.key, 4000) };
@@ -184,7 +240,7 @@ class ClaudeService {
     const projection = this.store.readSessionProjection(key);
     // 只记每个会话读到新修订号的那一次：旧版插件每 2 秒轮询，逐次记录会刷满日志并冲掉验收记录。
     if (message.action === 'read' && this.loggedReads.get(key) !== projection.revision) { this.loggedReads.set(key, projection.revision); this.log('sync.inline_read', { revision: projection.revision }); }
-    return { session: sessionView(this.store, key, { capabilities: { locate: true }, projection, lang }), key, title: session.title || t('fallbackShortTitle'), record: projection.record, lang,
+    return { session: sessionView(this.store, key, { capabilities: { locate: true }, projection, lang }), key, title: session.title || t('fallbackShortTitle'), record: projection.record, lang, accent: this.activeAccent(),
       revision: projection.revision, paneRequested: this.takePaneRequest(key), analysis: projection.analysis ? { ledger: { ...projection.analysis.ledger, tasks: projection.activeTasks } } : null, timeline: projection.timelineSummary, source,
       ...(message.action === 'read' && message.includeGit ? { projectGit: await this.projectGit(key) } : {}) };
   }

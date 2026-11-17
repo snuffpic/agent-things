@@ -6,8 +6,12 @@
   <title>Agent Things 会话任务进度 · 任务进展</title>
   <style>
     :root {
-      --accent: #0169cc;
-      --accent-hover: #005bb3;
+      --accent: var(--primary, #2F75C3);
+      --accent-hover: color-mix(in oklab, var(--accent) 88%, var(--at-ink, #000));
+      --accent-pressed: color-mix(in oklab, var(--accent) 78%, var(--at-ink, #000));
+      --on-accent: var(--primary-foreground, #ffffff);
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
       --at-ink: #e6edf3;
       --at-secondary: #a0a6ad;
       --at-muted: #828c96;
@@ -20,8 +24,7 @@
       --at-selected: #ffffff10;
       --at-source-bg: #ffffff0a;
       --at-number-line: #ffffff25;
-      --at-thumb: #e6edf3;
-      --at-thumb-edge: #ffffff30;
+      --at-thumb: #ffffff;
       --danger: #ef7777;
       --error: #f7ad86;
       --at-panel-bg: #0e1318;
@@ -88,7 +91,7 @@
       border-radius: 5px;
       outline-offset: 4px;
       cursor: default;
-      transition: max-height 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease, transform 0.22s ease, margin 0.22s ease;
+      transition: max-height 200ms var(--ease-out), opacity 180ms var(--ease-out), transform 200ms var(--ease-out);
       max-height: 60px;
       opacity: 1;
       transform: translateY(0);
@@ -102,7 +105,7 @@
       visibility: hidden;
       margin: 0;
       padding: 0;
-      transform: translateY(-20px);
+      transform: translateY(-10px);
       overflow: hidden;
       pointer-events: none;
     }
@@ -133,21 +136,29 @@
       height: 32px;
       display: block;
     }
+    .title-progress .progress-pie,
+    .title-progress text {
+      transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+      transform-origin: 12px 12px;
+      pointer-events: none;
+    }
     .title-progress text {
       opacity: 0;
-      transition: opacity 0.15s ease;
-      pointer-events: none;
+      transform: scale(0.94);
     }
     .title-progress text.progress-unknown {
       opacity: 1;
+      transform: none;
     }
     .title-heading:hover .progress-pie,
     .title-heading:focus-visible .progress-pie {
       opacity: 0;
+      transform: scale(0.94);
     }
     .title-heading:hover text,
     .title-heading:focus-visible text {
       opacity: 1;
+      transform: scale(1);
     }
 
     .panel-body {
@@ -158,7 +169,7 @@
       margin-top: 14px;
       scrollbar-width: none;
       -ms-overflow-style: none;
-      transition: margin-top 0.22s ease;
+      transition: margin-top 200ms var(--ease-out);
     }
     .shell.is-scrolled .panel-body {
       margin-top: 0;
@@ -249,7 +260,7 @@
     .meter {
       height: 4px;
       background: var(--at-track);
-      border-radius: 3px;
+      border-radius: 999px;
       margin: 10px 0 8px;
       overflow: hidden;
     }
@@ -258,6 +269,10 @@
       display: block;
       height: 100%;
       width: var(--fill, 0%);
+      background: var(--mark, var(--accent));
+      border-radius: inherit;
+      transition: width 220ms var(--ease-out), background-color 180ms var(--ease-out);
+    }
       background: var(--mark, #b4b7be);
       border-radius: inherit;
     }
@@ -333,7 +348,7 @@
     .primary {
       border: 0;
       background: var(--accent);
-      color: #fff;
+      color: var(--on-accent, #fff);
       border-radius: 9px;
       padding: 9px 14px;
       font-weight: 550;
@@ -341,11 +356,16 @@
       font-size: 13px;
       white-space: nowrap;
       flex-shrink: 0;
-      transition: background 0.15s ease;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.14);
+      transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out), opacity 160ms var(--ease-out);
     }
-    .primary:hover {
+    .primary:hover:not(:disabled) {
       background: var(--accent-hover);
-      color: #fff;
+      color: var(--on-accent, #fff);
+    }
+    .primary:active:not(:disabled) {
+      background: var(--accent-pressed, var(--accent-hover));
+      transform: scale(0.97);
     }
     .text-button, .clear, .back {
       border: 0;
@@ -355,10 +375,13 @@
       font-size: 12px;
       white-space: nowrap;
       cursor: pointer;
-      transition: color 0.12s ease;
+      transition: transform 160ms var(--ease-out), color 150ms var(--ease-out);
     }
     .text-button:hover, .back:hover {
       color: inherit;
+    }
+    .text-button:active:not(:disabled), .clear:active:not(:disabled), .back:active:not(:disabled) {
+      transform: scale(0.97);
     }
     .actions .clear {
       margin-left: auto;
@@ -381,17 +404,20 @@
       border: 1px solid var(--at-line);
       font-size: 11px;
       pointer-events: none;
+      transform-origin: bottom right;
       opacity: 0;
+      transform: scale(0.96) translateY(3px);
       visibility: hidden;
-      transition: opacity 0.08s, visibility 0s;
+      transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out), visibility 0s linear 150ms;
       white-space: nowrap;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
       z-index: 10;
     }
     .clear:is(:hover, :focus-visible) .clear-tooltip {
       opacity: 1;
+      transform: scale(1) translateY(0);
       visibility: visible;
-      transition-delay: 0.1s;
+      transition: opacity 150ms var(--ease-out) 160ms, transform 150ms var(--ease-out) 160ms, visibility 0s linear 160ms;
     }
 
     .section-head {
@@ -471,7 +497,7 @@
       opacity: 0;
       pointer-events: none;
       transform: translateX(6px);
-      transition: opacity 0.16s ease, transform 0.16s ease;
+      transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
     }
     .task-row:hover .task-source,
     .task-row:focus-within .task-source {
@@ -488,6 +514,10 @@
       font-size: 11px;
       white-space: nowrap;
       cursor: pointer;
+      transition: transform 160ms var(--ease-out), background-color 150ms var(--ease-out);
+    }
+    .task-source > button:active:not(:disabled) {
+      transform: scale(0.96);
     }
     .task-source > button:disabled {
       opacity: 0.65;
@@ -514,10 +544,17 @@
       text-align: left;
       font-size: 12px;
       cursor: pointer;
-      transition: color 0.15s ease;
+      transition: transform 160ms var(--ease-out), color 150ms var(--ease-out);
+    }
+    .quiet-row:active:not(:disabled) {
+      transform: scale(0.988);
     }
     .quiet-row span:last-child {
       color: var(--at-secondary);
+      transition: transform 160ms var(--ease-out), color 150ms var(--ease-out);
+    }
+    .quiet-row:hover span:last-child {
+      transform: translateX(2px);
     }
     .quiet-row:hover {
       color: var(--at-ink);
@@ -553,7 +590,7 @@
       margin-right: -6px;
       border-radius: 6px;
       cursor: pointer;
-      transition: color 0.12s, background 0.12s;
+      transition: transform 160ms var(--ease-out), color 150ms var(--ease-out), background-color 150ms var(--ease-out);
     }
     .view-heading .back:hover {
       color: var(--at-ink);
@@ -569,7 +606,7 @@
       background: linear-gradient(to bottom, var(--at-panel-bg), transparent);
       pointer-events: none;
       opacity: 0;
-      transition: opacity 0.2s ease-out, background 0.15s ease-out;
+      transition: opacity 180ms var(--ease-out);
     }
     .shell.is-scrolled .view-heading::after {
       opacity: 1;
@@ -595,10 +632,13 @@
       text-align: left;
       font-size: 13px;
       cursor: pointer;
-      transition: background 0.12s ease;
+      transition: transform 160ms var(--ease-out), background-color 150ms var(--ease-out);
     }
     .choice:hover {
       background: var(--at-hover);
+    }
+    .choice:active:not(:disabled) {
+      transform: scale(0.988);
     }
     .choice[aria-pressed="true"] {
       background: var(--at-selected);
@@ -609,6 +649,7 @@
       border: 1.6px solid var(--mark);
       border-radius: 50%;
       flex: none;
+      transition: background-color 180ms var(--ease-out), border-color 180ms var(--ease-out);
     }
     .choice[aria-pressed="true"] .dot {
       background: var(--mark);
@@ -652,7 +693,7 @@
     }
     .range {
       position: relative;
-      height: 51px;
+      height: 48px;
       margin-top: 2px;
       --mark: #c89b38;
     }
@@ -660,11 +701,15 @@
       position: absolute;
       left: 7px;
       right: 7px;
-      top: 10px;
-      height: 4px;
-      border-radius: 3px;
-      background: linear-gradient(to right, var(--mark) var(--fill), var(--at-track) var(--fill));
+      top: 9px;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(to right, var(--range-fill, var(--mark)) var(--fill), var(--at-track) var(--fill));
       pointer-events: none;
+      transition: background-color 160ms var(--ease-out);
+    }
+    .range.is-dragging .range-track {
+      transition: none;
     }
     .range-input {
       position: relative;
@@ -678,18 +723,26 @@
       cursor: pointer;
     }
     .range-input::-webkit-slider-runnable-track {
-      height: 4px;
+      height: 6px;
       background: transparent;
     }
     .range-input::-webkit-slider-thumb {
       appearance: none;
-      width: 14px;
-      height: 14px;
+      width: 16px;
+      height: 16px;
       margin-top: -5px;
       background: var(--at-thumb);
-      border: 2px solid var(--at-panel-bg);
+      border: 0.5px solid rgba(0, 0, 0, 0.14);
       border-radius: 50%;
-      box-shadow: 0 0 0 1px var(--at-thumb-edge);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+      transition: transform 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+    }
+    .range-input:hover::-webkit-slider-thumb {
+      transform: scale(1.06);
+    }
+    .range-input:active::-webkit-slider-thumb {
+      transform: scale(1.1);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(0, 0, 0, 0.12);
     }
     .range-nodes {
       position: absolute;
@@ -704,23 +757,17 @@
       top: 8px;
       width: 0;
       font-size: 10px;
+      font-weight: 500;
+      opacity: 0.78;
       color: var(--at-secondary);
       font-variant-numeric: tabular-nums;
     }
     .range-node::before {
-      content: "";
-      display: block;
-      width: 7px;
-      height: 7px;
-      transform: translateX(-50%);
-      border-radius: 50%;
-      background: var(--at-panel-bg);
-      border: 1px solid var(--at-secondary);
-      box-shadow: 0 0 0 1px var(--at-panel-bg);
+      display: none;
     }
     .range-node-label {
       position: absolute;
-      top: 19px;
+      top: 20px;
       left: 0;
       transform: translateX(-50%);
     }
@@ -792,36 +839,162 @@
       color: #548eea;
     }
 
+    :root[data-color-mode="light"] {
+      --at-ink: #22272e;
+      --at-secondary: #576374;
+      --at-muted: #667383;
+      --at-note: #46515f;
+      --at-track: #dfe4ea;
+      --at-line: #dfe4ea;
+      --at-input-border: #c7d0da;
+      --at-input-bg: #f7f9fb;
+      --at-hover: #f0f3f6;
+      --at-selected: #e9edf2;
+      --at-source-bg: #e9eef4;
+      --at-number-line: #b6c1ce;
+      --at-thumb: #ffffff;
+      --danger: #bf2f3a;
+      --error: #b13a2d;
+      --at-panel-bg: #ffffff;
+      color: var(--at-ink);
+      color-scheme: light;
+    }
+    html[data-color-mode="light"] .shell {
+      --at-panel-bg: #ffffff;
+      border-color: #dfe4ea;
+      box-shadow: none;
+    }
+    html[data-color-mode="light"] .range {
+      --range-fill: color-mix(in srgb, var(--mark) 85%, #000);
+    }
+
     @media (prefers-color-scheme: light) {
-      :root {
+      :root:not([data-color-mode="dark"]) {
         --at-ink: #22272e;
         --at-secondary: #576374;
         --at-muted: #667383;
         --at-note: #46515f;
-        --at-track: #c3ccd6;
+        --at-track: #dfe4ea;
         --at-line: #dfe4ea;
         --at-input-border: #c7d0da;
-        --input-bg: #f7f9fb;
-        --hover: #f0f3f6;
-        --selected: #e9edf2;
-        --source-bg: #e9eef4;
-        --number-line: #b6c1ce;
-        --thumb: var(--accent);
-        --thumb-edge: var(--accent);
+        --at-input-bg: #f7f9fb;
+        --at-hover: #f0f3f6;
+        --at-selected: #e9edf2;
+        --at-source-bg: #e9eef4;
+        --at-number-line: #b6c1ce;
+        --at-thumb: #ffffff;
         --danger: #bf2f3a;
         --error: #b13a2d;
-        --panel-bg: #fff;
+        --at-panel-bg: #ffffff;
         color: var(--at-ink);
         color-scheme: light;
       }
-      .shell {
-        --panel-bg: #fff;
+      html:not([data-color-mode="dark"]) .shell {
+        --at-panel-bg: #ffffff;
         border-color: #dfe4ea;
         box-shadow: none;
+      }
+      html:not([data-color-mode="dark"]) .range {
+        --range-fill: color-mix(in srgb, var(--mark) 85%, #000);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .primary:active:not(:disabled),
+      .text-button:active:not(:disabled),
+      .clear:active:not(:disabled),
+      .back:active:not(:disabled),
+      .task-source > button:active:not(:disabled),
+      .choice:active:not(:disabled),
+      .quiet-row:active:not(:disabled),
+      .range-input:hover::-webkit-slider-thumb,
+      .range-input:active::-webkit-slider-thumb {
+        transform: none;
       }
     }
   </style>
   <script src="/preload.js"></script>
+  <script>
+    function syncThemeWithHost() {
+      try {
+        const root = document.documentElement;
+        const styleComp = getComputedStyle(root);
+        const bg = styleComp.getPropertyValue('--background').trim();
+        const fg = styleComp.getPropertyValue('--foreground').trim();
+        const mutedFg = styleComp.getPropertyValue('--muted-foreground').trim();
+
+        let isLight = null;
+        if (bg) {
+          if (bg.startsWith('#') && bg.length >= 7) {
+            const r = parseInt(bg.slice(1, 3), 16), g = parseInt(bg.slice(3, 5), 16), b = parseInt(bg.slice(5, 7), 16);
+            isLight = (0.299 * r + 0.587 * g + 0.114 * b) > 130;
+          } else if (bg.startsWith('rgb')) {
+            const m = bg.match(/\d+/g);
+            if (m && m.length >= 3) isLight = (0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]) > 130;
+          }
+        }
+        if (isLight === null) {
+          const cfgMode = window.__agentThingsHostTheme?.mode || root.getAttribute('data-color-mode');
+          if (cfgMode === 'light' || cfgMode === 'dark') {
+            isLight = cfgMode === 'light';
+          } else {
+            isLight = Boolean(window.matchMedia?.('(prefers-color-scheme: light)').matches);
+          }
+        }
+
+        const fallbackPrimary = window.__agentThingsHostTheme?.primary || (isLight ? '#2F75C3' : '#2F71E3');
+        const rawPrimary = (styleComp.getPropertyValue('--primary') || styleComp.getPropertyValue('--accent') || '').trim();
+        const primaryColor = rawPrimary || fallbackPrimary;
+        if (!rawPrimary && fallbackPrimary) {
+          root.style.setProperty('--primary', fallbackPrimary);
+        }
+        const primaryFg = styleComp.getPropertyValue('--primary-foreground').trim();
+        const hexMatch = primaryColor.match(/^#([0-9a-f]{6})$/i);
+        if (hexMatch) {
+          const hex = hexMatch[1];
+          const rgb = [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+          const lum = rgb.reduce((acc, c, i) => {
+            const s = c / 255;
+            const lin = s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+            return acc + lin * (i === 0 ? 0.2126 : i === 1 ? 0.7152 : 0.0722);
+          }, 0);
+          const isBrightAccent = lum > 0.45;
+          root.style.setProperty('--on-accent', isBrightAccent ? '#0D0D0D' : (primaryFg || '#FFFFFF'));
+        } else if (primaryFg) {
+          root.style.setProperty('--on-accent', primaryFg);
+        }
+
+        root.setAttribute('data-color-mode', isLight ? 'light' : 'dark');
+        if (isLight) {
+          root.style.setProperty('--at-ink', fg || '#22272e');
+          root.style.setProperty('--at-secondary', mutedFg || '#576374');
+          root.style.setProperty('--at-muted', '#667383');
+          root.style.setProperty('--at-note', '#46515f');
+          root.style.setProperty('--at-panel-bg', '#ffffff');
+          root.style.setProperty('--at-line', '#dfe4ea');
+          root.style.setProperty('--at-track', '#dfe4ea');
+          root.style.setProperty('--at-input-border', '#c7d0da');
+          root.style.setProperty('--at-input-bg', '#f6f8fa');
+          root.style.setProperty('--at-hover', '#f3f4f6');
+          root.style.setProperty('--at-source-bg', '#f6f8fa');
+          root.style.setProperty('color-scheme', 'light');
+        } else {
+          root.style.setProperty('--at-ink', fg || '#e6edf3');
+          root.style.setProperty('--at-secondary', '#a0a6ad');
+          root.style.setProperty('--at-muted', '#828c96');
+          root.style.setProperty('--at-note', '#bbc3ca');
+          root.style.setProperty('--at-panel-bg', '#0e1318');
+          root.style.setProperty('--at-line', '#ffffff14');
+          root.style.setProperty('--at-track', '#ffffff12');
+          root.style.setProperty('--at-input-border', '#ffffff18');
+          root.style.setProperty('--at-input-bg', '#ffffff03');
+          root.style.setProperty('--at-hover', '#ffffff09');
+          root.style.setProperty('--at-source-bg', '#ffffff0a');
+          root.style.setProperty('color-scheme', 'dark');
+        }
+      } catch (_) {}
+    }
+    syncThemeWithHost();
+  </script>
 </head>
 <body>
   <div class="shell" id="agentThingsCard">
@@ -1410,10 +1583,14 @@
 
     function onSliderPointerDown() {
       isDraggingSlider = true;
+      const rangeBox = document.getElementById('rangeBox');
+      if (rangeBox) rangeBox.classList.add('is-dragging');
     }
 
     function onSliderPointerUp() {
       isDraggingSlider = false;
+      const rangeBox = document.getElementById('rangeBox');
+      if (rangeBox) rangeBox.classList.remove('is-dragging');
     }
 
     function onSliderInput(val) {
@@ -1542,15 +1719,28 @@
       }
     }
 
+    let feedbackTimerId = null;
+
     function showFeedback(msg, isError = false) {
       const el = document.getElementById('feedbackMsg');
       if (!el) return;
+      if (feedbackTimerId) {
+        clearTimeout(feedbackTimerId);
+        feedbackTimerId = null;
+      }
       el.textContent = msg;
       el.className = 'feedback-msg ' + (isError ? 'error' : 'success');
-      setTimeout(function() { if (el.textContent === msg) el.textContent = ''; }, 4000);
+      feedbackTimerId = setTimeout(function() {
+        feedbackTimerId = null;
+        if (el.textContent === msg) el.textContent = '';
+      }, 4000);
     }
 
     function clearFeedback() {
+      if (feedbackTimerId) {
+        clearTimeout(feedbackTimerId);
+        feedbackTimerId = null;
+      }
       const el = document.getElementById('feedbackMsg');
       if (el) el.textContent = '';
     }
@@ -1813,26 +2003,29 @@
         const color = colors[currentState] || colors.unstarted;
         const hasProgress = currentProgress !== null && currentProgress !== undefined && Number.isFinite(currentProgress);
         const progVal = hasProgress ? Math.max(0, Math.min(100, currentProgress)) : 0;
+        const ringSig = currentState + ':' + (hasProgress ? progVal : 'null');
+        if (titleProgress.dataset.ringSig !== ringSig) {
+          titleProgress.dataset.ringSig = ringSig;
+          let piePath = '';
+          if (hasProgress && progVal > 0) {
+            const angle = (progVal / 100) * Math.PI * 2;
+            const x = (12 + 7.4 * Math.sin(angle)).toFixed(2);
+            const y = (12 - 7.4 * Math.cos(angle)).toFixed(2);
+            piePath = progVal === 100
+              ? '<path d="M12 4.6a7.4 7.4 0 1 1 0 14.8a7.4 7.4 0 1 1 0-14.8" fill="' + color + '" class="progress-pie"/>'
+              : '<path d="M12 12L12 4.6A7.4 7.4 0 ' + (progVal > 50 ? 1 : 0) + ' 1 ' + x + ' ' + y + 'Z" fill="' + color + '" class="progress-pie"/>';
+          }
 
-        let piePath = '';
-        if (hasProgress && progVal > 0) {
-          const angle = (progVal / 100) * Math.PI * 2;
-          const x = (12 + 7.4 * Math.sin(angle)).toFixed(2);
-          const y = (12 - 7.4 * Math.cos(angle)).toFixed(2);
-          piePath = progVal === 100
-            ? '<path d="M12 4.6a7.4 7.4 0 1 1 0 14.8a7.4 7.4 0 1 1 0-14.8" fill="' + color + '" class="progress-pie"/>'
-            : '<path d="M12 12L12 4.6A7.4 7.4 0 ' + (progVal > 50 ? 1 : 0) + ' 1 ' + x + ' ' + y + 'Z" fill="' + color + '" class="progress-pie"/>';
+          const isHundred = progVal === 100;
+          const fontSize = isHundred ? '5.8px' : '6.4px';
+          const letterSpacing = isHundred ? '-0.3px' : '-0.2px';
+
+          titleProgress.innerHTML = '<svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" style="overflow:visible">' +
+            '<circle cx="12" cy="12" r="10" fill="none" stroke="' + color + '" stroke-width="1.6" opacity="' + (hasProgress ? '1' : '0.85') + '"/>' +
+            piePath +
+            '<text x="12" y="12.4" text-anchor="middle" dominant-baseline="middle" fill="' + color + '" class="' + (hasProgress ? '' : 'progress-unknown') + '" style="font:600 ' + fontSize + ' -apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:' + letterSpacing + ';font-variant-numeric:tabular-nums">' + (hasProgress ? (progVal + '%') : '—') + '</text>' +
+            '</svg>';
         }
-
-        const isHundred = progVal === 100;
-        const fontSize = isHundred ? '5.8px' : '6.4px';
-        const letterSpacing = isHundred ? '-0.3px' : '-0.2px';
-
-        titleProgress.innerHTML = '<svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" style="overflow:visible">' +
-          '<circle cx="12" cy="12" r="10" fill="none" stroke="' + color + '" stroke-width="1.6" opacity="' + (hasProgress ? '1' : '0.85') + '"/>' +
-          piePath +
-          '<text x="12" y="12.4" text-anchor="middle" dominant-baseline="middle" fill="' + color + '" class="' + (hasProgress ? '' : 'progress-unknown') + '" style="font:600 ' + fontSize + ' -apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:' + letterSpacing + ';font-variant-numeric:tabular-nums">' + (hasProgress ? (progVal + '%') : '—') + '</text>' +
-          '</svg>';
       }
 
       if (Array.isArray(data.tasks)) {
@@ -1853,7 +2046,9 @@
         if (historyCount) historyCount.textContent = str('countArrowPattern', { count: completed.length });
 
         const uncompletedList = document.getElementById('uncompletedTasksList');
-        if (uncompletedList) {
+        const remSig = activeLang + '|' + JSON.stringify(remaining.map(function(t) { return [t.id, t.status, t.title, t.summary, t.source]; }));
+        if (uncompletedList && uncompletedList.dataset.tasksSig !== remSig) {
+          uncompletedList.dataset.tasksSig = remSig;
           let html = '';
           if (data.tasks.length === 0) {
             html = '<div class="empty">' + escapeHtml(str('emptyNoTasks')) + '</div>';
@@ -1876,7 +2071,9 @@
         }
 
         const historyList = document.getElementById('historyList');
-        if (historyList) {
+        const histSig = activeLang + '|' + JSON.stringify(completed.map(function(t) { return [t.id, t.title, t.summary, t.source]; }));
+        if (historyList && historyList.dataset.tasksSig !== histSig) {
+          historyList.dataset.tasksSig = histSig;
           let html = '';
           if (completed.length === 0) {
             html = '<div class="empty">' + escapeHtml(str('emptyCompleted')) + '</div>';
@@ -1992,55 +2189,6 @@
       }, { passive: true });
     }
 
-    
-    function syncThemeWithHost() {
-      try {
-        const bg = getComputedStyle(document.documentElement).getPropertyValue('--background').trim();
-        const fg = getComputedStyle(document.documentElement).getPropertyValue('--foreground').trim();
-        const mutedFg = getComputedStyle(document.documentElement).getPropertyValue('--muted-foreground').trim();
-
-        let isLight = false;
-        if (bg) {
-          if (bg.startsWith('#') && bg.length >= 7) {
-            const r = parseInt(bg.slice(1, 3), 16), g = parseInt(bg.slice(3, 5), 16), b = parseInt(bg.slice(5, 7), 16);
-            if ((0.299 * r + 0.587 * g + 0.114 * b) > 130) isLight = true;
-          } else if (bg.startsWith('rgb')) {
-            const m = bg.match(/\d+/g);
-            if (m && m.length >= 3 && (0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]) > 130) isLight = true;
-          }
-        }
-
-        const root = document.documentElement;
-        if (isLight) {
-          root.style.setProperty('--at-ink', fg || '#22272e');
-          root.style.setProperty('--at-secondary', mutedFg || '#576374');
-          root.style.setProperty('--at-muted', '#667383');
-          root.style.setProperty('--at-note', '#46515f');
-          root.style.setProperty('--at-panel-bg', '#ffffff');
-          root.style.setProperty('--at-line', '#dfe4ea');
-          root.style.setProperty('--at-track', '#c3ccd6');
-          root.style.setProperty('--at-input-border', '#c7d0da');
-          root.style.setProperty('--at-input-bg', '#f6f8fa');
-          root.style.setProperty('--at-hover', '#f3f4f6');
-          root.style.setProperty('--at-source-bg', '#f6f8fa');
-          root.style.setProperty('color-scheme', 'light');
-        } else {
-          root.style.setProperty('--at-ink', fg || '#e6edf3');
-          root.style.setProperty('--at-secondary', '#a0a6ad');
-          root.style.setProperty('--at-muted', '#828c96');
-          root.style.setProperty('--at-note', '#bbc3ca');
-          root.style.setProperty('--at-panel-bg', '#0e1318');
-          root.style.setProperty('--at-line', '#ffffff14');
-          root.style.setProperty('--at-track', '#ffffff12');
-          root.style.setProperty('--at-input-border', '#ffffff18');
-          root.style.setProperty('--at-input-bg', '#ffffff03');
-          root.style.setProperty('--at-hover', '#ffffff09');
-          root.style.setProperty('--at-source-bg', '#ffffff0a');
-          root.style.setProperty('color-scheme', 'dark');
-        }
-      } catch (_) {}
-    }
-
     function resetToEmptySession(nextTitle) {
       isFormDirty = false;
       hideConflictNotice();
@@ -2081,7 +2229,8 @@
 
     window.addEventListener('message', (ev) => {
       if (ev.data?.type === 'theme-change') {
-        setTimeout(syncThemeWithHost, 50);
+        syncThemeWithHost();
+        requestAnimationFrame(syncThemeWithHost);
       }
       if (ev.data?.type === 'ANTIGRAVITY_CONVERSATION_CHANGED' || ev.data?.type === 'conversation-change') {
         const newId = (ev.data?.conversationId || ev.data?.id || '').trim();

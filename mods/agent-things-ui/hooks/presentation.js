@@ -184,9 +184,10 @@ export function preview(text, maxWidth = NOTE_LINE_WIDTH) {
 
 export function slider(value, color, width = CONTENT_WIDTH) {
   const sliderWidth = Math.max(130, Math.round(Number.isFinite(Number(width)) ? Number(width) : CONTENT_WIDTH));
-  const track = sliderWidth - 14, at = 7 + track * (value || 0) / 100;
-  const nodes = layout.progressNodes.map(n => `<circle cx="${7+track*n/100}" cy="12" r="3.5" fill="light-dark(#fff,#191919)" stroke="light-dark(#576374,#a0a6ad)" stroke-width="1"/><text x="${7+track*n/100}" y="38" font-size="10" fill="currentColor" text-anchor="${n === 0 ? 'start' : n === 100 ? 'end' : 'middle'}" opacity=".68">${n}</text>`).join('');
-  return svg(`<rect x="7" y="10" width="${track}" height="4" rx="2" fill="light-dark(#c3ccd6,#ffffff12)"/><rect x="7" y="10" width="${track*(value||0)/100}" height="4" rx="2" fill="${color}"/>${nodes}<circle cx="${at}" cy="12" r="7" fill="light-dark(${accent.normal},#e6edf3)" stroke="light-dark(#fff,#191919)" stroke-width="2"/>`, sliderWidth, 51, 'xMinYMid meet');
+  const pad = 9;
+  const track = sliderWidth - pad * 2, at = pad + track * (value || 0) / 100;
+  const nodes = layout.progressNodes.map(n => `<text x="${pad+track*n/100}" y="38" font-size="10" fill="currentColor" text-anchor="${n === 0 ? 'start' : n === 100 ? 'end' : 'middle'}" opacity=".68">${n}</text>`).join('');
+  return svg(`<rect x="${pad}" y="9" width="${track}" height="6" rx="3" fill="light-dark(#e5e9ef,#ffffff16)"/><rect x="${pad}" y="9" width="${track*(value||0)/100}" height="6" rx="3" fill="${color}"/>${nodes}<circle cx="${at}" cy="12" r="8" fill="#ffffff" stroke="light-dark(#00000024,#00000066)" stroke-width="1.2"/>`, sliderWidth, 51, 'xMinYMid meet');
 }
 export function measureButtonWidth(label, minWidth = BUTTON_WIDTH) {
   const w = textWidth(String(label || ''), 13);
@@ -196,9 +197,11 @@ export function measureClearWidth(label, minWidth = 64) {
   const w = textWidth(String(label || ''), 11);
   return Math.max(minWidth, Math.round(w + 20));
 }
-export function primary(label, disabled, hovered = false, pressed = false, width = measureButtonWidth(label)) {
-  const fill = disabled ? accent.normal : pressed ? accent.pressed : hovered ? accent.hover : accent.normal;
-  return svg(`<rect width="${width}" height="36" rx="9" fill="${fill}" opacity="${disabled?'.5':'1'}"/><text x="${width/2}" y="23" fill="white" text-anchor="middle" font-size="13" font-weight="550">${escape(label)}</text>`, width, 36, 'xMidYMid meet');
+export function primary(label, disabled, hovered = false, pressed = false, width = measureButtonWidth(label), palette = null) {
+  const p = palette && typeof palette === 'object' && palette.normal ? palette : accent;
+  const fill = disabled ? p.normal : pressed ? (p.pressed || p.normal) : hovered ? (p.hover || p.normal) : p.normal;
+  const fg = p.onAccent || 'white';
+  return svg(`<rect width="${width}" height="36" rx="9" fill="${fill}" opacity="${disabled?'.5':'1'}"/><text x="${width/2}" y="23" fill="${escape(fg)}" text-anchor="middle" font-size="13" font-weight="550">${escape(label)}</text>`, width, 36, 'xMidYMid meet');
 }
 
 // 「在侧栏打开」图标：右侧 28×28 为图标，悬停时在左侧画出提示。

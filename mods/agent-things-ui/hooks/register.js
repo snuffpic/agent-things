@@ -319,7 +319,7 @@ async function draw($, e, inPane) {
       const saveLabel = busy ? t('savingBtn') : t('saveBtn');
       const saveWidthCols = colWidthFor(measureButtonWidth(saveLabel), 8.6);
       content.push(row([trailing(button('cancel', t('cancelBtn'), async () => { draft = null; await view($, 'overview'); }, { plain: true })),
-        control('save', { kind: 'button', action: 'save', disabled: busy, label: saveLabel }, saveWidthCols)]));
+        control('save', { kind: 'button', action: 'save', disabled: busy, label: saveLabel, accent: data?.accent || null }, saveWidthCols)]));
       if (conflict) content.push(button('resolve-conflict', t('resolveConflictBtn'), () => rebaseDraft($), { plain: true }));
     } else {
       content.push(statusRow({ dotColor: color, label: labels[record?.state] || t('unrecordedSummary'), timeLabel: date(record?.updatedAt), score: record?.progress, scoreAlt: `${record?.progress ?? t('progressUnrecordedWord')}%` }));
@@ -335,7 +335,7 @@ async function draw($, e, inPane) {
       const clearLabel = t('btnClear');
       const clearWidthCols = colWidthFor(measureClearWidth(clearLabel), 6.9);
       content.push(row([
-        control('analyze', { kind: 'button', action: 'analyze', disabled: Boolean(active) || busy, label: analyzeLabel }, analyzeWidthCols),
+        control('analyze', { kind: 'button', action: 'analyze', disabled: Boolean(active) || busy, label: analyzeLabel, accent: data?.accent || null }, analyzeWidthCols),
         button('edit', t('btnAdjust'), () => edit($), { plain: true, dimColor: true }),
         trailing(control('clear', { kind: 'button', action: 'clear', disabled: busy, label: clearLabel }, clearWidthCols)),
       ]));

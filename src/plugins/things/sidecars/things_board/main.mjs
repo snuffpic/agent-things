@@ -97,6 +97,33 @@ function getActiveUi(lang) {
   return getUiForLang(normalizeLang(lang) || readConfiguredLang());
 }
 
+function readConfiguredHostTheme() {
+  let mode = 'light';
+  try {
+    const out = execFileSync('defaults', ['read', '-g', 'AppleInterfaceStyle'], {
+      encoding: 'utf8',
+      timeout: 300,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (/^dark$/i.test(out)) mode = 'dark';
+  } catch (_) {}
+  let settings = {};
+  try {
+    const cfgPath = join(homedir(), '.gemini/config/config.json');
+    if (existsSync(cfgPath)) {
+      settings = JSON.parse(readFileSync(cfgPath, 'utf-8'))?.userSettings || {};
+    }
+  } catch (_) {}
+  if (settings.themeMode === 'THEME_MODE_LIGHT') mode = 'light';
+  else if (settings.themeMode === 'THEME_MODE_DARK') mode = 'dark';
+  const seeds = mode === 'dark' ? settings.customThemeSeedsDark : settings.customThemeSeedsLight;
+  return {
+    mode,
+    primary: seeds?.primary || (mode === 'dark' ? '#2F71E3' : '#2F75C3'),
+    bg: seeds?.background || (mode === 'dark' ? '#070708' : '#FFFFFF'),
+  };
+}
+
 function sidecarMsg(lang, zhText, enText) {
   return (normalizeLang(lang) || readConfiguredLang()) === 'en' ? enText : zhText;
 }
@@ -271,7 +298,8 @@ const app = new SidecarApp();
 app.page('/', () => {
   const lang = readConfiguredLang();
   const ui = getActiveUi(lang);
-  const bootstrapScript = `<script>window.__agentThingsLang=${JSON.stringify(lang)};window.__agentThingsI18n=${JSON.stringify({
+  const hostTheme = readConfiguredHostTheme();
+  const bootstrapScript = `<script>window.__agentThingsLang=${JSON.stringify(lang)};window.__agentThingsHostTheme=${JSON.stringify(hostTheme)};window.__agentThingsI18n=${JSON.stringify({
     lang,
     labels: ui.labels,
     taskLabels: ui.taskLabels,
@@ -280,7 +308,7 @@ app.page('/', () => {
     locales: ui.locales,
   })};</script>`;
   let html = readFileSync(join(__dirname, 'index.html'), 'utf-8');
-  html = html.replace('<html lang="zh-CN">', `<html lang="${lang === 'en' ? 'en' : 'zh-CN'}">`);
+  html = html.replace('<html lang="zh-CN">', `<html lang="${lang === 'en' ? 'en' : 'zh-CN'}" data-color-mode="${hostTheme.mode}" style="color-scheme:${hostTheme.mode}">`);
   html = html.replace(
     '<title>Agent Things 会话任务进度 · 任务进展</title>',
     `<title>${lang === 'en' ? `${ui.strings.defaultDocTitle} · ${ui.strings.docTitleSuffix}` : 'Agent Things 会话任务进度 · 任务进展'}</title>`
@@ -533,9 +561,14 @@ async function triggerHostLocate(convId, source) {
         const box = el.querySelector?.('[data-testid="user-message-bubble"]') || el;
         box.scrollIntoView({ block: 'center', behavior: 'smooth' });
         const po = box.style.outline, ps = box.style.boxShadow, pt = box.style.transition;
-        box.style.transition = 'all 0.25s ease';
-        box.style.outline = '2px solid #0169cc';
-        box.style.boxShadow = '0 0 0 4px rgba(1, 105, 204, 0.25), 0 8px 24px rgba(1, 105, 204, 0.35)';
+        let accentHex = '#2F75C3';
+        try {
+          const v = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+          if (v) accentHex = v;
+        } catch (_) {}
+        box.style.transition = 'outline-color 200ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 200ms cubic-bezier(0.23, 1, 0.32, 1)';
+        box.style.outline = '2px solid ' + accentHex;
+        box.style.boxShadow = '0 0 0 4px color-mix(in srgb, ' + accentHex + ' 25%, transparent), 0 8px 24px color-mix(in srgb, ' + accentHex + ' 35%, transparent)';
         setTimeout(() => {
           box.style.outline = po;
           box.style.boxShadow = ps;

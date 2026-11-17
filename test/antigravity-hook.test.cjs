@@ -40,24 +40,25 @@ test('antigravity-hook: processHookInput ignores non-/things input', () => {
   assert.deepEqual(invalidJson, {});
 });
 
-test('antigravity-hook: processHookInput intercepts /things and outputs termination contract', () => {
+test('antigravity-hook: processHookInput intercepts /things and outputs ephemeralMessage fast-path', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-hook-test-'));
   try {
     const rawInput = JSON.stringify({
       lastUserInput: '/things',
       conversationId: 'test-hook-conv',
       artifactDirectoryPath: tempDir,
+      invocationNum: 0,
     });
 
     const output = processHookInput(rawInput);
-    assert.equal(output.terminationBehavior, 'terminate');
+    assert.equal(output.terminationBehavior, undefined);
     assert.ok(Array.isArray(output.injectSteps));
     assert.equal(output.injectSteps.length, 1);
 
     const step = output.injectSteps[0];
-    assert.ok(step.systemMessage);
-    assert.ok(step.systemMessage.metadata);
-    const md = step.systemMessage.metadata.user_markdown;
+    assert.equal(step.systemMessage, undefined);
+    assert.equal(step.hookEphemeralMessage, undefined);
+    const md = step.ephemeralMessage;
     assert.ok(typeof md === 'string');
     assert.ok(md.includes('<agent-embed src="file://'));
     assert.ok(md.includes('things-card.html'));
@@ -68,6 +69,22 @@ test('antigravity-hook: processHookInput intercepts /things and outputs terminat
     const content = fs.readFileSync(expectedFile, 'utf8');
     assert.ok(content.includes('当前会话'));
     assert.ok(!content.includes('Agent Things 会话任务进度'));
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('antigravity-hook: processHookInput skips subsequent model invocations within same turn', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-hook-repeat-'));
+  try {
+    const output = processHookInput(JSON.stringify({
+      lastUserInput: '/things',
+      conversationId: 'test-hook-repeat-conv',
+      artifactDirectoryPath: tempDir,
+      invocationNum: 1,
+    }));
+    assert.deepEqual(output, {});
+    assert.equal(fs.existsSync(path.join(tempDir, 'things-card.html')), false);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -98,8 +115,8 @@ test('antigravity-hook: CLI stdin/stdout child_process pipeline', async () => {
     assert.equal(exitCode, 0);
 
     const parsed = JSON.parse(stdout);
-    assert.equal(parsed.terminationBehavior, 'terminate');
-    assert.ok(parsed.injectSteps[0].systemMessage.metadata.user_markdown.includes('things-card.html'));
+    assert.equal(parsed.terminationBehavior, undefined);
+    assert.ok(parsed.injectSteps[0].ephemeralMessage.includes('things-card.html'));
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -115,8 +132,8 @@ test('antigravity-hook: processHookInput handles empty session without writing l
     });
 
     const output = processHookInput(rawInput);
-    assert.equal(output.terminationBehavior, 'terminate');
-    const md = output.injectSteps[0].systemMessage.metadata.user_markdown;
+    assert.equal(output.terminationBehavior, undefined);
+    const md = output.injectSteps[0].ephemeralMessage;
     assert.ok(md.includes('当前会话任务进度：尚未记录进展'), 'should display 尚未记录进展 for empty session');
     assert.ok(md.includes('暂无任务清单'), 'should display 暂无任务清单');
     assert.ok(fs.existsSync(path.join(tempDir, 'things-card.html')), 'card file created');

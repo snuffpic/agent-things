@@ -5,6 +5,24 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { readConfiguredLang, getUi } = require('./i18n.cjs');
+const { createPresentation } = require('./ui-foundation.cjs');
+
+const presentationHelper = createPresentation('zh');
+
+function readAntigravityConfiguredAccent({ isDark = false } = {}) {
+  const defaultPrimary = isDark ? '#2F71E3' : '#2F75C3';
+  try {
+    const configPath = path.join(os.homedir(), '.gemini', 'config', 'config.json');
+    if (fs.existsSync(configPath)) {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const settings = cfg?.userSettings || {};
+      const seeds = isDark ? settings.customThemeSeedsDark : settings.customThemeSeedsLight;
+      const customPrimary = seeds?.primary;
+      if (customPrimary) return customPrimary;
+    }
+  } catch (_) {}
+  return defaultPrimary;
+}
 
 const colors = {
   unstarted: '#9098a2',
@@ -99,6 +117,9 @@ function renderAntigravityCardHtml({
     loadToken: connection?.loadToken || null,
   });
 
+  const lightAccentPalette = presentationHelper.resolveAccentPalette(readAntigravityConfiguredAccent({ isDark: false }), { isDark: false, fallback: '#2F75C3' });
+  const darkAccentPalette = presentationHelper.resolveAccentPalette(readAntigravityConfiguredAccent({ isDark: true }), { isDark: true, fallback: '#2F71E3' });
+
   return `<!DOCTYPE html>
 <html lang="${htmlLang}">
 <head>
@@ -107,8 +128,12 @@ function renderAntigravityCardHtml({
   <title>${escapeHtml(resolvedTitle)} · ${escapeHtml(t('docTitleSuffix'))}</title>
   <style>
     :root {
-      --accent: #0169cc;
-      --accent-hover: #005bb3;
+      --accent: ${darkAccentPalette.normal};
+      --accent-hover: ${darkAccentPalette.hover};
+      --accent-pressed: ${darkAccentPalette.pressed};
+      --on-accent: ${darkAccentPalette.onAccent};
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
       --ink: #e6edf3;
       --secondary: #a0a6ad;
       --muted: #828c96;
@@ -121,8 +146,7 @@ function renderAntigravityCardHtml({
       --selected: #ffffff10;
       --source-bg: #ffffff0a;
       --number-line: #ffffff25;
-      --thumb: #e6edf3;
-      --thumb-edge: #ffffff30;
+      --thumb: #ffffff;
       --danger: #ef7777;
       --error: #f7ad86;
       --panel-bg: #0e1318;
@@ -220,13 +244,16 @@ function renderAntigravityCardHtml({
       border-radius: 6px;
       background: none;
       color: var(--secondary);
-      transition: color 0.12s, background 0.12s, opacity 0.18s ease, transform 0.22s ease;
+      transition: color 150ms var(--ease-out), background-color 150ms var(--ease-out), opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
       z-index: 5;
     }
     .open-pane:hover,
     .open-pane:focus-visible {
       color: var(--ink);
       background: var(--hover);
+    }
+    .open-pane:active:not(:disabled) {
+      transform: scale(0.94);
     }
     .open-pane:focus-visible {
       outline: 2px solid var(--accent);
@@ -240,7 +267,8 @@ function renderAntigravityCardHtml({
       position: absolute;
       right: calc(100% + 6px);
       top: 50%;
-      transform: translateY(-50%);
+      transform-origin: center right;
+      transform: translateY(-50%) scale(0.96);
       padding: 4px 8px;
       border-radius: 6px;
       background: var(--panel-bg);
@@ -253,13 +281,14 @@ function renderAntigravityCardHtml({
       pointer-events: none;
       opacity: 0;
       visibility: hidden;
-      transition: opacity 0.08s, visibility 0s;
+      transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out), visibility 0s linear 150ms;
       z-index: 20;
     }
     .open-pane:is(:hover, :focus-visible) .open-pane-tip {
       opacity: 1;
+      transform: translateY(-50%) scale(1);
       visibility: visible;
-      transition-delay: 0.15s;
+      transition: opacity 150ms var(--ease-out) 160ms, transform 150ms var(--ease-out) 160ms, visibility 0s linear 160ms;
     }
     .shell.is-scrolled .open-pane {
       opacity: 0;
@@ -294,21 +323,29 @@ function renderAntigravityCardHtml({
       height: 32px;
       display: block;
     }
+    .title-progress .progress-pie,
+    .title-progress text {
+      transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+      transform-origin: 12px 12px;
+      pointer-events: none;
+    }
     .title-progress text {
       opacity: 0;
-      transition: opacity 0.15s ease;
-      pointer-events: none;
+      transform: scale(0.94);
     }
     .title-progress text.progress-unknown {
       opacity: 1;
+      transform: none;
     }
     .title-heading:hover .progress-pie,
     .title-heading:focus-visible .progress-pie {
       opacity: 0;
+      transform: scale(0.94);
     }
     .title-heading:hover text,
     .title-heading:focus-visible text {
       opacity: 1;
+      transform: scale(1);
     }
 
     .panel-body {
@@ -399,7 +436,7 @@ function renderAntigravityCardHtml({
     .meter {
       height: 4px;
       background: var(--track);
-      border-radius: 3px;
+      border-radius: 999px;
       margin: 10px 0 8px;
       overflow: hidden;
     }
@@ -410,6 +447,7 @@ function renderAntigravityCardHtml({
       width: ${progress != null ? Math.max(0, Math.min(100, progress)) : 0}%;
       background: ${stateColor};
       border-radius: inherit;
+      transition: width 220ms var(--ease-out), background-color 180ms var(--ease-out);
     }
 
     .totals-row {
@@ -483,7 +521,7 @@ function renderAntigravityCardHtml({
     .primary {
       border: 0;
       background: var(--accent);
-      color: #fff;
+      color: var(--on-accent, #fff);
       border-radius: 9px;
       padding: 9px 14px;
       font-weight: 550;
@@ -491,11 +529,16 @@ function renderAntigravityCardHtml({
       font-size: 13px;
       white-space: nowrap;
       flex-shrink: 0;
-      transition: background 0.15s ease;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.14);
+      transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out), opacity 160ms var(--ease-out);
     }
-    .primary:hover {
+    .primary:hover:not(:disabled) {
       background: var(--accent-hover);
-      color: #fff;
+      color: var(--on-accent, #fff);
+    }
+    .primary:active:not(:disabled) {
+      background: var(--accent-pressed, var(--accent-hover));
+      transform: scale(0.97);
     }
     .text-button, .clear, .back {
       border: 0;
@@ -505,10 +548,13 @@ function renderAntigravityCardHtml({
       font-size: 12px;
       white-space: nowrap;
       cursor: pointer;
-      transition: color 0.12s ease;
+      transition: transform 160ms var(--ease-out), color 150ms var(--ease-out);
     }
     .text-button:hover, .back:hover {
       color: inherit;
+    }
+    .text-button:active:not(:disabled), .clear:active:not(:disabled), .back:active:not(:disabled) {
+      transform: scale(0.97);
     }
     .actions .clear {
       margin-left: auto;
@@ -531,17 +577,20 @@ function renderAntigravityCardHtml({
       border: 1px solid var(--line);
       font-size: 11px;
       pointer-events: none;
+      transform-origin: bottom right;
       opacity: 0;
+      transform: scale(0.96) translateY(3px);
       visibility: hidden;
-      transition: opacity 0.08s, visibility 0s;
+      transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out), visibility 0s linear 150ms;
       white-space: nowrap;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
       z-index: 10;
     }
     .clear:is(:hover, :focus-visible) .clear-tooltip {
       opacity: 1;
+      transform: scale(1) translateY(0);
       visibility: visible;
-      transition-delay: 0.1s;
+      transition: opacity 150ms var(--ease-out) 160ms, transform 150ms var(--ease-out) 160ms, visibility 0s linear 160ms;
     }
 
     .section-head {
@@ -675,10 +724,17 @@ function renderAntigravityCardHtml({
       text-align: left;
       font-size: 12px;
       cursor: pointer;
-      transition: color 0.15s ease;
+      transition: transform 160ms var(--ease-out), color 150ms var(--ease-out);
+    }
+    .quiet-row:active:not(:disabled) {
+      transform: scale(0.988);
     }
     .quiet-row span:last-child {
       color: var(--secondary);
+      transition: transform 160ms var(--ease-out), color 150ms var(--ease-out);
+    }
+    .quiet-row:hover span:last-child {
+      transform: translateX(2px);
     }
     .quiet-row:hover {
       color: var(--ink);
@@ -756,10 +812,13 @@ function renderAntigravityCardHtml({
       text-align: left;
       font-size: 13px;
       cursor: pointer;
-      transition: background 0.12s ease;
+      transition: transform 160ms var(--ease-out), background-color 150ms var(--ease-out);
     }
     .choice:hover {
       background: var(--hover);
+    }
+    .choice:active:not(:disabled) {
+      transform: scale(0.988);
     }
     .choice[aria-pressed="true"] {
       background: var(--selected);
@@ -770,6 +829,7 @@ function renderAntigravityCardHtml({
       border: 1.6px solid var(--mark);
       border-radius: 50%;
       flex: none;
+      transition: background-color 180ms var(--ease-out), border-color 180ms var(--ease-out);
     }
     .choice[aria-pressed="true"] .dot {
       background: var(--mark);
@@ -813,7 +873,7 @@ function renderAntigravityCardHtml({
     }
     .range {
       position: relative;
-      height: 51px;
+      height: 48px;
       margin-top: 2px;
       --mark: ${stateColor};
     }
@@ -821,11 +881,15 @@ function renderAntigravityCardHtml({
       position: absolute;
       left: 7px;
       right: 7px;
-      top: 10px;
-      height: 4px;
-      border-radius: 3px;
-      background: linear-gradient(to right, var(--mark) var(--fill), var(--track) var(--fill));
+      top: 9px;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(to right, var(--range-fill, var(--mark)) var(--fill), var(--track) var(--fill));
       pointer-events: none;
+      transition: background-color 160ms var(--ease-out);
+    }
+    .range.is-dragging .range-track {
+      transition: none;
     }
     .range-input {
       position: relative;
@@ -839,18 +903,26 @@ function renderAntigravityCardHtml({
       cursor: pointer;
     }
     .range-input::-webkit-slider-runnable-track {
-      height: 4px;
+      height: 6px;
       background: transparent;
     }
     .range-input::-webkit-slider-thumb {
       appearance: none;
-      width: 14px;
-      height: 14px;
+      width: 16px;
+      height: 16px;
       margin-top: -5px;
       background: var(--thumb);
-      border: 2px solid var(--panel-bg);
+      border: 0.5px solid rgba(0, 0, 0, 0.14);
       border-radius: 50%;
-      box-shadow: 0 0 0 1px var(--thumb-edge);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+      transition: transform 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+    }
+    .range-input:hover::-webkit-slider-thumb {
+      transform: scale(1.06);
+    }
+    .range-input:active::-webkit-slider-thumb {
+      transform: scale(1.1);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(0, 0, 0, 0.12);
     }
     .range-nodes {
       position: absolute;
@@ -865,23 +937,17 @@ function renderAntigravityCardHtml({
       top: 8px;
       width: 0;
       font-size: 10px;
+      font-weight: 500;
+      opacity: 0.78;
       color: var(--secondary);
       font-variant-numeric: tabular-nums;
     }
     .range-node::before {
-      content: "";
-      display: block;
-      width: 7px;
-      height: 7px;
-      transform: translateX(-50%);
-      border-radius: 50%;
-      background: var(--panel-bg);
-      border: 1px solid var(--secondary);
-      box-shadow: 0 0 0 1px var(--panel-bg);
+      display: none;
     }
     .range-node-label {
       position: absolute;
-      top: 19px;
+      top: 20px;
       left: 0;
       transform: translateX(-50%);
     }
@@ -953,13 +1019,57 @@ function renderAntigravityCardHtml({
       color: #548eea;
     }
 
+    :root[data-color-mode="light"],
+    :root.light {
+      --accent: ${lightAccentPalette.normal};
+      --accent-hover: ${lightAccentPalette.hover};
+      --accent-pressed: ${lightAccentPalette.pressed};
+      --on-accent: ${lightAccentPalette.onAccent};
+      --ink: #22272e;
+      --secondary: #576374;
+      --muted: #667383;
+      --note: #46515f;
+      --track: #dfe4ea;
+      --line: #dfe4ea;
+      --input-border: #c7d0da;
+      --input-bg: #f7f9fb;
+      --hover: #f0f3f6;
+      --selected: #e9edf2;
+      --source-bg: #e9eef4;
+      --number-line: #b6c1ce;
+      --thumb: #ffffff;
+      --danger: #bf2f3a;
+      --error: #b13a2d;
+      --panel-bg: #fff;
+      color: var(--ink);
+      color-scheme: light;
+    }
+    html[data-color-mode="light"] .shell,
+    html.light .shell {
+      --panel-bg: #fff;
+      border-color: #dfe4ea;
+      box-shadow: none;
+    }
+    html[data-color-mode="light"] .shell:hover,
+    html.light .shell:hover {
+      --panel-bg: #f5f6f7;
+    }
+    html[data-color-mode="light"] .range,
+    html.light .range {
+      --range-fill: color-mix(in srgb, var(--mark) 85%, #000);
+    }
+
     @media (prefers-color-scheme: light) {
-      :root {
+      :root:not([data-color-mode="dark"]):not(.dark) {
+        --accent: ${lightAccentPalette.normal};
+        --accent-hover: ${lightAccentPalette.hover};
+        --accent-pressed: ${lightAccentPalette.pressed};
+        --on-accent: ${lightAccentPalette.onAccent};
         --ink: #22272e;
         --secondary: #576374;
         --muted: #667383;
         --note: #46515f;
-        --track: #c3ccd6;
+        --track: #dfe4ea;
         --line: #dfe4ea;
         --input-border: #c7d0da;
         --input-bg: #f7f9fb;
@@ -967,21 +1077,36 @@ function renderAntigravityCardHtml({
         --selected: #e9edf2;
         --source-bg: #e9eef4;
         --number-line: #b6c1ce;
-        --thumb: var(--accent);
-        --thumb-edge: var(--accent);
+        --thumb: #ffffff;
         --danger: #bf2f3a;
         --error: #b13a2d;
         --panel-bg: #fff;
         color: var(--ink);
         color-scheme: light;
       }
-      .shell {
+      html:not([data-color-mode="dark"]):not(.dark) .shell {
         --panel-bg: #fff;
         border-color: #dfe4ea;
         box-shadow: none;
       }
-      .shell:hover {
+      html:not([data-color-mode="dark"]):not(.dark) .shell:hover {
         --panel-bg: #f5f6f7;
+      }
+      html:not([data-color-mode="dark"]):not(.dark) .range {
+        --range-fill: color-mix(in srgb, var(--mark) 85%, #000);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .primary:active:not(:disabled),
+      .text-button:active:not(:disabled),
+      .clear:active:not(:disabled),
+      .back:active:not(:disabled),
+      .choice:active:not(:disabled),
+      .quiet-row:active:not(:disabled),
+      .open-pane:active:not(:disabled),
+      .range-input:hover::-webkit-slider-thumb,
+      .range-input:active::-webkit-slider-thumb {
+        transform: none;
       }
     }
   </style>
@@ -1023,15 +1148,13 @@ function renderAntigravityCardHtml({
 
         <div class="totals-row">
           <span class="totals" id="overviewTotals">${escapeHtml(totalsText)}</span>
-          <span class="source-label">${escapeHtml(sourceLabel)}</span>
+          <span class="source-label" id="overviewSourceLabel">${escapeHtml(sourceLabel)}</span>
         </div>
 
-        ${summaryText ? `
-        <div class="summary-block" id="summaryBlock" tabindex="0">
+        <div class="summary-block" id="summaryBlock" tabindex="0"${summaryText ? '' : ' hidden'}>
           <div class="overview-summary" id="overviewSummary">${escapeHtml(summaryText)}</div>
           <button class="summary-expand" id="summaryExpand" onclick="toggleSummaryExpand()" hidden>${escapeHtml(t('expandAll'))}</button>
         </div>
-        ` : ''}
 
         <div class="actions">
           <button class="primary" id="btnAnalyze" onclick="onAnalyzeClick()">${escapeHtml(t('btnUpdate'))}</button>
@@ -1198,10 +1321,14 @@ function renderAntigravityCardHtml({
     let savedRevision = ${Number(revision) || 0};
     let draftBaseRevision = savedRevision;
     let isFormDirty = false;
+    let pendingRemoteSnapshot = null;
+    let saveSwitchTimer = null;
     let currentState = ${JSON.stringify(state)};
     let currentProgress = ${progress != null ? Number(progress) : 'null'};
     let isDraggingSlider = false;
     let hostChannelPort = null;
+    let hostHandshakePending = false;
+    let hostHandshakePromise = null;
 
     function resetScroll() {
       const panel = document.getElementById('panelBody');
@@ -1232,6 +1359,10 @@ function renderAntigravityCardHtml({
     }
 
     function switchToEdit() {
+      if (saveSwitchTimer) {
+        clearTimeout(saveSwitchTimer);
+        saveSwitchTimer = null;
+      }
       resetScroll();
       draftBaseRevision = savedRevision;
       isFormDirty = false;
@@ -1259,6 +1390,10 @@ function renderAntigravityCardHtml({
     }
 
     function switchToOverview() {
+      if (saveSwitchTimer) {
+        clearTimeout(saveSwitchTimer);
+        saveSwitchTimer = null;
+      }
       resetScroll();
       document.getElementById('editView').hidden = true;
       document.getElementById('historyView').hidden = true;
@@ -1266,7 +1401,13 @@ function renderAntigravityCardHtml({
       isFormDirty = false;
       hideConflictNotice();
       clearFeedback();
-      checkSummaryOverflow();
+      if (pendingRemoteSnapshot) {
+        const pending = pendingRemoteSnapshot;
+        pendingRemoteSnapshot = null;
+        applyFullProgressToUI(pending);
+      } else {
+        checkSummaryOverflow();
+      }
     }
 
     function markFormDirty() {
@@ -1313,10 +1454,14 @@ function renderAntigravityCardHtml({
 
     function onSliderPointerDown() {
       isDraggingSlider = true;
+      const rangeBox = document.getElementById('rangeBox');
+      if (rangeBox) rangeBox.classList.add('is-dragging');
     }
 
     function onSliderPointerUp() {
       isDraggingSlider = false;
+      const rangeBox = document.getElementById('rangeBox');
+      if (rangeBox) rangeBox.classList.remove('is-dragging');
     }
 
     function onSliderInput(val) {
@@ -1412,7 +1557,7 @@ function renderAntigravityCardHtml({
         const source = JSON.parse(sourceJson);
         showFeedback(i18n.locatingSourceMessage);
 
-        const result = hostChannelPort
+        const result = (hostChannelPort && !hostHandshakePending)
           ? await postHostChannelRequest({
               type: 'AGENT_THINGS_LOCATE',
               source,
@@ -1474,7 +1619,9 @@ function renderAntigravityCardHtml({
     }
 
     async function sendProxyAction(action, payload = {}) {
-      if (!hostChannelPort) {
+      if (hostHandshakePromise) {
+        try { await hostHandshakePromise; } catch (_) {}
+      } else if (!hostChannelPort) {
         try { await requestHostAuth(); } catch (_) {}
       }
       return postHostChannelRequest({
@@ -1503,7 +1650,13 @@ function renderAntigravityCardHtml({
       try {
         if (btn) btn.disabled = true;
         clearFeedback();
-        if (hostChannelPort) {
+        if (hostHandshakePending && hostHandshakePromise) {
+          await Promise.race([
+            hostHandshakePromise.catch(() => null),
+            new Promise((resolve) => setTimeout(resolve, 250)),
+          ]);
+        }
+        if (hostChannelPort && !hostHandshakePending) {
           try {
             await postHostChannelRequest({
               type: 'AGENT_THINGS_OPEN_PANE',
@@ -1523,7 +1676,7 @@ function renderAntigravityCardHtml({
           return;
         }
         try { await requestHostAuth(); } catch (_) {}
-        if (hostChannelPort) {
+        if (hostChannelPort && !hostHandshakePending) {
           await postHostChannelRequest({
             type: 'AGENT_THINGS_OPEN_PANE',
           }, { timeoutMs: 4500, errorLabel: i18n.cardRequestTimeout });
@@ -1541,6 +1694,8 @@ function renderAntigravityCardHtml({
       if (!data || typeof data !== 'object') return;
 
       if (data.type === 'AGENT_THINGS_AUTH_RESPONSE' && data.nonce) {
+        hostHandshakePending = false;
+        hostHandshakePromise = null;
         const req = pendingActions.get(data.nonce);
         if (req) {
           clearTimeout(req.timer);
@@ -1571,14 +1726,21 @@ function renderAntigravityCardHtml({
     }
 
     function requestHostAuth() {
-      return new Promise((resolve, reject) => {
+      if (hostHandshakePromise) return hostHandshakePromise;
+      const isInitialHandshake = !hostChannelPort;
+      if (isInitialHandshake) {
+        hostHandshakePending = true;
+      }
+      const promise = new Promise((resolve, reject) => {
         const nonce = 'auth-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
         const timer = setTimeout(() => {
           pendingActions.delete(nonce);
-          if (hostChannelPort && !authTicket) {
-            try { hostChannelPort.close(); } catch (_) {}
+          if (isInitialHandshake || (hostChannelPort && !authTicket)) {
+            hostHandshakePending = false;
+            try { hostChannelPort?.close?.(); } catch (_) {}
             hostChannelPort = null;
           }
+          if (hostHandshakePromise === promise) hostHandshakePromise = null;
           reject(new Error(i18n.cardTimeout));
         }, 8000);
 
@@ -1597,6 +1759,7 @@ function renderAntigravityCardHtml({
             } catch (_) {
               try { hostChannelPort.close(); } catch (_) {}
               hostChannelPort = null;
+              hostHandshakePending = true;
             }
           }
 
@@ -1614,15 +1777,25 @@ function renderAntigravityCardHtml({
           } else {
             clearTimeout(timer);
             pendingActions.delete(nonce);
+            hostHandshakePending = false;
+            if (hostHandshakePromise === promise) hostHandshakePromise = null;
             reject(new Error(i18n.cardAuthUnavailable));
             return;
           }
         } catch (err) {
           clearTimeout(timer);
           pendingActions.delete(nonce);
+          if (isInitialHandshake) {
+            hostHandshakePending = false;
+            try { hostChannelPort?.close?.(); } catch (_) {}
+            hostChannelPort = null;
+          }
+          if (hostHandshakePromise === promise) hostHandshakePromise = null;
           reject(err);
         }
       });
+      hostHandshakePromise = promise;
+      return promise;
     }
 
     window.addEventListener('message', (event) => {
@@ -1631,22 +1804,48 @@ function renderAntigravityCardHtml({
       } catch (_) {}
     });
 
+    function buildAppliedSessionSnapshot(replySession, fallback) {
+      const pending = pendingRemoteSnapshot;
+      const pendingRev = typeof pending?.revision === 'number' ? pending.revision : -1;
+      const replyRev = typeof replySession?.recordRevision === 'number' ? replySession.recordRevision : -1;
+      const hasNewerPending = Boolean(pending && (replyRev < 0 || pendingRev >= replyRev));
+      return {
+        state: hasNewerPending ? pending.state : (replySession?.state || fallback.state),
+        progress: hasNewerPending ? pending.progress : (replySession && 'progress' in replySession ? replySession.progress : fallback.progress),
+        note: hasNewerPending ? pending.note : (replySession && 'note' in replySession ? replySession.note : fallback.note),
+        summary: hasNewerPending
+          ? pending.summary
+          : ((replySession && 'summary' in replySession ? replySession.summary : fallback.summary) || ''),
+        source: hasNewerPending ? pending.source : (replySession?.source || fallback.source || 'manual'),
+        updatedAt: hasNewerPending ? pending.updatedAt : (replySession?.updatedAt || fallback.updatedAt || new Date().toISOString()),
+        tasks: (hasNewerPending ? pending.tasks : null) || replySession?.tasks || pending?.tasks,
+        title: (hasNewerPending ? pending.title : null) || replySession?.title || pending?.title,
+        revision: hasNewerPending ? pending.revision : (replyRev >= 0 ? replyRev : fallback.revision),
+      };
+    }
+
     async function onSaveRecord() {
       const btn = document.getElementById('btnSaveRecord');
       const noteVal = document.getElementById('txtNote')?.value ?? '';
+      if (saveSwitchTimer) {
+        clearTimeout(saveSwitchTimer);
+        saveSwitchTimer = null;
+      }
       try {
         if (btn) btn.disabled = true;
         showFeedback(i18n.savingFeedback);
+        const submittedState = currentState;
+        const submittedProgress = currentProgress;
         const reply = await sendProxyAction('update', {
           expectedRevision: draftBaseRevision,
           record: {
-            state: currentState,
-            progress: currentProgress,
+            state: submittedState,
+            progress: submittedProgress,
             note: noteVal
           }
         });
-        // 修复：sendProxyAction 已解包 data，调用方应读 reply.session.recordRevision
-        const newRev = reply?.session?.recordRevision;
+        const replySession = reply?.session || null;
+        const newRev = replySession?.recordRevision;
         if (typeof newRev === 'number') {
           savedRevision = newRev;
           draftBaseRevision = newRev;
@@ -1654,8 +1853,21 @@ function renderAntigravityCardHtml({
         }
         isFormDirty = false;
         hideConflictNotice();
+        const applied = buildAppliedSessionSnapshot(replySession, {
+          state: submittedState,
+          progress: submittedProgress,
+          note: noteVal,
+          summary: noteVal,
+          source: 'manual',
+          revision: currentRevision,
+        });
+        pendingRemoteSnapshot = null;
+        applyFullProgressToUI(applied);
         showFeedback(i18n.savedFeedback);
-        setTimeout(switchToOverview, 600);
+        saveSwitchTimer = setTimeout(function() {
+          saveSwitchTimer = null;
+          switchToOverview();
+        }, 600);
       } catch (err) {
         const isConflict = err.message && (err.message.includes('其他窗口更新') || err.message.includes('another window') || err.message.includes('版本已被') || err.message.includes('409') || err.message.includes('conflict') || err.message.includes('revision mismatch'));
         if (isConflict) {
@@ -1670,19 +1882,32 @@ function renderAntigravityCardHtml({
 
     async function onClearClick() {
       if (!confirm(i18n.clearConfirm)) return;
+      if (saveSwitchTimer) {
+        clearTimeout(saveSwitchTimer);
+        saveSwitchTimer = null;
+      }
       try {
         showFeedback(i18n.clearingFeedback);
         const reply = await sendProxyAction('clear', {
           expectedRevision: draftBaseRevision,
         });
-        const newRev = reply?.session?.recordRevision;
-        if (typeof newRev === 'number') {
-          savedRevision = newRev;
-          draftBaseRevision = newRev;
-          currentRevision = newRev;
-        }
+        const replySession = reply?.session || null;
+        const newRev = typeof replySession?.recordRevision === 'number' ? replySession.recordRevision : 0;
+        savedRevision = newRev;
+        draftBaseRevision = newRev;
+        currentRevision = newRev;
         isFormDirty = false;
         hideConflictNotice();
+        const applied = buildAppliedSessionSnapshot(replySession, {
+          state: 'unstarted',
+          progress: null,
+          note: '',
+          summary: '',
+          source: 'manual',
+          revision: newRev,
+        });
+        pendingRemoteSnapshot = null;
+        applyFullProgressToUI(applied);
         showFeedback(i18n.clearedFeedback);
       } catch (err) {
         showFeedback(i18n.clearFailedPrefix + err.message, true);
@@ -1698,15 +1923,39 @@ function renderAntigravityCardHtml({
       const effectiveNote = s.note || s.progress?.note || '';
       const effectiveSummary = s.summary || s.progress?.summary || s.analysis?.ledger?.summary || '';
       const effectiveTitle = s.title || s.progress?.title || '';
+      const effectiveSource = s.source || s.progress?.source || (s.analysis || s.savedAnalysis ? 'analysis' : 'manual');
+      const effectiveUpdatedAt = s.updatedAt || s.progress?.updatedAt || s.analysisStatus?.finishedAt || '';
 
-      if (typeof s.recordRevision === 'number') savedRevision = Math.max(savedRevision, s.recordRevision);
-      else if (typeof s.progress?.revision === 'number') savedRevision = Math.max(savedRevision, s.progress.revision);
-      else if (typeof s.revision === 'number') savedRevision = Math.max(savedRevision, s.revision);
+      const isRemoteClear = s.recordRevision === 0 && effectiveProgress === null && !effectiveNote;
+      if (isRemoteClear) {
+        savedRevision = 0;
+      } else if (typeof s.recordRevision === 'number') {
+        savedRevision = Math.max(savedRevision, s.recordRevision);
+      } else if (typeof s.progress?.revision === 'number') {
+        savedRevision = Math.max(savedRevision, s.progress.revision);
+      } else if (typeof s.revision === 'number') {
+        savedRevision = Math.max(savedRevision, s.revision);
+      }
 
-      // 若未处于草稿编辑中，基准版本与当前展示版本同步更新
-      if (!isFormDirty) {
+      const nextSnapshot = {
+        state: effectiveState,
+        progress: effectiveProgress,
+        tasks: effectiveTasks,
+        note: effectiveNote,
+        summary: effectiveSummary,
+        title: effectiveTitle,
+        source: effectiveSource,
+        updatedAt: effectiveUpdatedAt,
+        revision: savedRevision,
+      };
+
+      // Cache latest remote snapshot even during dirty form edits so it renders on exit/save/clear
+      if (isFormDirty) {
+        pendingRemoteSnapshot = nextSnapshot;
+      } else {
         currentRevision = savedRevision;
         draftBaseRevision = savedRevision;
+        pendingRemoteSnapshot = null;
       }
 
       const analyzing = Boolean(s.analyzing || s.analysisStatus?.status === 'pending');
@@ -1725,17 +1974,9 @@ function renderAntigravityCardHtml({
         }
       }
 
-      // 仅在非 dirty 编辑态下将远端状态刷入表单与展示
+      // Apply to DOM immediately when not in dirty edit mode
       if (!isFormDirty) {
-        applyFullProgressToUI({
-          state: effectiveState,
-          progress: effectiveProgress,
-          tasks: effectiveTasks,
-          note: effectiveNote,
-          summary: effectiveSummary,
-          title: effectiveTitle,
-          revision: currentRevision,
-        });
+        applyFullProgressToUI(nextSnapshot);
       }
     }
 
@@ -1791,10 +2032,30 @@ function renderAntigravityCardHtml({
         totalsEl.textContent = totalCount > 0 ? fmt('totalsPattern', { done: doneCount, total: totalCount }) : i18n.noTasksYet;
       }
 
+      const tsEl = document.getElementById('overviewTimestamp');
+      if (tsEl && data.updatedAt) {
+        const dt = new Date(data.updatedAt);
+        if (!isNaN(dt.getTime())) {
+          tsEl.textContent = (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
+        }
+      }
+
+      const sourceEl = document.getElementById('overviewSourceLabel');
+      if (sourceEl && data.source) {
+        sourceEl.textContent = data.source === 'analysis' ? i18n.sourceAuto : i18n.sourceManual;
+      }
+
       const summaryText = data.summary || data.note || '';
+      const summaryBlock = document.getElementById('summaryBlock');
       const summaryEl = document.getElementById('overviewSummary');
-      if (summaryEl && summaryText) {
-        summaryEl.textContent = summaryText;
+      if (summaryEl) {
+        if (summaryText) {
+          summaryEl.textContent = summaryText;
+          if (summaryBlock) summaryBlock.hidden = false;
+        } else if ('summary' in data || 'note' in data) {
+          summaryEl.textContent = '';
+          if (summaryBlock) summaryBlock.hidden = true;
+        }
       }
       checkSummaryOverflow();
 
@@ -1984,9 +2245,176 @@ function renderAntigravityCardHtml({
       }, { passive: true });
     }
 
+    function setupHostAutoResize() {
+      // Built-in host resize reporting so inline embeds expand beyond the 200px default after srcdoc verification strips host wrappers.
+      if (!window.parent || window.parent === window) return function() {};
+      const MIN_HEIGHT = 24;
+      const MAX_HEIGHT = 20000;
+      const SLACK = 4;
+      const WINDOW_MS = 2000;
+      const MAX_UPDATES_PER_WINDOW = 40;
+      const MAX_DISTINCT_HEIGHTS = 8;
+      const COOLDOWN_MS = 2000;
+      let lastHeight = -1;
+      let updates = [];
+      let frozen = false;
+      let rafId = null;
+
+      function sendHeight(rawHeight) {
+        if (frozen) return;
+        let height = Math.ceil(rawHeight);
+        if (!(height > 0)) height = 0;
+        if (height > MAX_HEIGHT) height = MAX_HEIGHT;
+        if (height < MIN_HEIGHT) height = MIN_HEIGHT;
+        if (lastHeight >= 0 && Math.abs(height - lastHeight) <= SLACK) return;
+
+        const now = Date.now();
+        updates.push({ t: now, h: height });
+        while (updates.length && now - updates[0].t > WINDOW_MS) {
+          updates.shift();
+        }
+        if (updates.length > MAX_UPDATES_PER_WINDOW) {
+          const seen = {};
+          let distinct = 0;
+          for (let i = 0; i < updates.length; i++) {
+            if (!seen[updates[i].h]) {
+              seen[updates[i].h] = true;
+              distinct++;
+            }
+          }
+          if (distinct <= MAX_DISTINCT_HEIGHTS) {
+            frozen = true;
+            updates = [];
+            setTimeout(function() {
+              frozen = false;
+              measure();
+            }, COOLDOWN_MS);
+            return;
+          }
+        }
+
+        lastHeight = height;
+        try {
+          window.parent.postMessage({ type: 'RESIZE', height: height }, '*');
+        } catch (_) {}
+      }
+
+      function measure() {
+        const body = document.body;
+        const shell = document.getElementById('agentThingsCard');
+        let margins = 0;
+        if (body && typeof getComputedStyle === 'function') {
+          try {
+            const style = getComputedStyle(body);
+            margins = (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
+          } catch (_) {}
+        }
+        const bodyHeight = body ? Math.max(body.scrollHeight || 0, body.offsetHeight || 0) : 0;
+        const shellRect = shell && typeof shell.getBoundingClientRect === 'function' ? shell.getBoundingClientRect() : null;
+        const shellHeight = shell
+          ? Math.max(shell.scrollHeight || 0, shell.offsetHeight || 0, shellRect ? (shellRect.height || 0) : 0)
+          : 0;
+        const content = Math.max(bodyHeight, shellHeight) + margins;
+        if (content > 0) sendHeight(content + SLACK);
+      }
+
+      function scheduleMeasure() {
+        if (typeof requestAnimationFrame === 'function') {
+          if (rafId && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId);
+          rafId = requestAnimationFrame(function() {
+            rafId = null;
+            measure();
+          });
+        } else {
+          measure();
+        }
+      }
+
+      if (typeof ResizeObserver === 'function') {
+        try {
+          const observer = new ResizeObserver(scheduleMeasure);
+          const shell = document.getElementById('agentThingsCard');
+          if (document.body) observer.observe(document.body);
+          if (shell && shell !== document.body) observer.observe(shell);
+        } catch (_) {}
+      }
+
+      if (typeof window.addEventListener === 'function') {
+        window.addEventListener('load', measure);
+      }
+      if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+        document.fonts.ready.then(measure);
+      }
+
+      measure();
+      return measure;
+    }
+
+    function normalizeCardHex(raw) {
+      if (typeof raw !== 'string') return '';
+      const s = raw.trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toUpperCase();
+      if (/^#[0-9a-fA-F]{3}$/.test(s)) return ('#' + s[1] + s[1] + s[2] + s[2] + s[3] + s[3]).toUpperCase();
+      const m = s.match(/^rgba?\\(\\s*(\\d{1,3})\\s*[,\\s]\\s*(\\d{1,3})\\s*[,\\s]\\s*(\\d{1,3})/i);
+      if (!m) return '';
+      return '#' + [m[1], m[2], m[3]].map(n => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, '0')).join('').toUpperCase();
+    }
+
+    function applyHostThemeMode(rawMode, rawBg) {
+      let mode = rawMode === 'light' || rawMode === 'dark' ? rawMode : '';
+      if (!mode && typeof rawBg === 'string' && rawBg.trim()) {
+        const bgHex = normalizeCardHex(rawBg);
+        if (bgHex) {
+          const r = parseInt(bgHex.slice(1, 3), 16), g = parseInt(bgHex.slice(3, 5), 16), b = parseInt(bgHex.slice(5, 7), 16);
+          mode = (0.299 * r + 0.587 * g + 0.114 * b) > 130 ? 'light' : 'dark';
+        }
+      }
+      if (mode) {
+        document.documentElement.setAttribute('data-color-mode', mode);
+        document.documentElement.style.colorScheme = mode;
+      }
+      return mode;
+    }
+
+    function applyHostAccent(rawPrimary, rawFg) {
+      const hex = normalizeCardHex(rawPrimary);
+      if (!hex) return;
+      const rootStyle = document.documentElement.style;
+      rootStyle.setProperty('--accent', hex);
+      const rgb = [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+      const lum = rgb.reduce((acc, c, i) => {
+        const srgb = c / 255;
+        const lin = srgb <= 0.03928 ? srgb / 12.92 : Math.pow((srgb + 0.055) / 1.055, 2.4);
+        return acc + lin * (i === 0 ? 0.2126 : i === 1 ? 0.7152 : 0.0722);
+      }, 0);
+      const isLightInk = lum > 0.45;
+      const mixHex = (tRgb, weight) => '#' + rgb.map((c, i) => Math.max(0, Math.min(255, Math.round(c * weight + tRgb[i] * (1 - weight)))).toString(16).padStart(2, '0')).join('').toUpperCase();
+      const docMode = document.documentElement.getAttribute('data-color-mode');
+      const hostIsLight = docMode ? docMode === 'light' : !window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+      const darkTarget = isLightInk || hostIsLight ? [0, 0, 0] : [255, 255, 255];
+      rootStyle.setProperty('--accent-hover', mixHex(darkTarget, 0.88));
+      rootStyle.setProperty('--accent-pressed', mixHex(darkTarget, 0.78));
+      const fgHex = normalizeCardHex(rawFg);
+      rootStyle.setProperty('--on-accent', fgHex || (isLightInk ? '#0D0D0D' : '#FFFFFF'));
+    }
+
     function initCard() {
+      if (window.__agentThingsHostTheme) {
+        applyHostThemeMode(window.__agentThingsHostTheme);
+      }
+      if (window.__agentThingsHostAccent) {
+        applyHostAccent(window.__agentThingsHostAccent, window.__agentThingsHostAccentFg);
+      }
+      window.addEventListener('message', function(ev) {
+        if (ev?.data?.type === 'THEME_SYNC' && ev.data.cssVariables) {
+          const vars = ev.data.cssVariables;
+          applyHostThemeMode(vars['--theme-type'], vars['--background']);
+          applyHostAccent(vars['--primary'] || vars['--accent'], vars['--primary-foreground']);
+        }
+      });
       checkSummaryOverflow();
       setupScrollListener();
+      setupHostAutoResize();
       initEventStream();
     }
 

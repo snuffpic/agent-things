@@ -210,7 +210,9 @@ test('Codex, Antigravity card & hook, and Claude UI render unified English strin
       conversationId: 'en-conv-1',
       artifactDirectoryPath: hookDir,
     }));
-    const md = hookRes.injectSteps[0].systemMessage.metadata.user_markdown;
+    const md = hookRes.injectSteps[0].ephemeralMessage;
+    assert.equal(typeof md, 'string');
+    assert.ok(md.includes('things-card.html'));
     assert.doesNotMatch(md, /[\u4e00-\u9fff]/);
     const cardHtml = fs.readFileSync(path.join(hookDir, 'things-card.html'), 'utf8');
     assert.ok(cardHtml.includes('<html lang="en">'));
@@ -410,4 +412,54 @@ test('English skills keep every rule of the Chinese skills and both prompts rewr
   assert.equal(rules(zh), rules(en));
   assert.match(zh, /previousLedger 中的任务标题、短总结或顶层 summary 不是中文时，保留其 knownTaskId/);
   assert.match(en, /If `previousLedger` contains non-English titles or summaries, rewrite/);
+});
+
+test('v1.3.1: session-status S() keys exist in zh/en dictionaries, resolveAccentPalette guards contrast, and Mod SVG uses Option A slider', async t => {
+  const { createPresentation } = require('../src/ui-foundation.cjs');
+  const pres = createPresentation('zh');
+
+  // 1. Every static S('...') key in src/session-status.js exists in both zh & en locales
+  const sessionStatusSource = fs.readFileSync(path.join(__dirname, '../src/session-status.js'), 'utf8');
+  const usedKeys = [...new Set([...sessionStatusSource.matchAll(/\bS\('([^']+)'/g)].map(m => m[1]))];
+  assert.ok(usedKeys.length > 50);
+  for (const key of usedKeys) {
+    assert.ok(Object.hasOwn(pres.locales.zh, key), `Missing zh i18n key in ui-foundation.cjs: ${key}`);
+    assert.ok(Object.hasOwn(pres.locales.en, key), `Missing en i18n key in ui-foundation.cjs: ${key}`);
+  }
+
+  // 2. resolveAccentPalette contrast guard & 32 Claude Code Appearance themes
+  assert.equal(Object.keys(pres.claudeCodeThemes).length, 32);
+  for (const hex of ['#0169CC', '#2F75C3', '#C6613F']) {
+    const palette = pres.resolveAccentPalette(hex);
+    assert.equal(palette.normal, hex);
+    assert.equal(palette.onAccent, '#FFFFFF');
+  }
+  for (const brightHex of ['#F6C543', '#FFFFFF']) {
+    const palette = pres.resolveAccentPalette(brightHex);
+    assert.equal(palette.normal, brightHex);
+    assert.equal(palette.onAccent, '#0D0D0D');
+  }
+
+  // 3. mods/agent-things-ui/hooks/presentation.js Option A slider & dynamic primary() palette
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-pres-test-'));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ type: 'module' }));
+  const hooksDir = path.join(__dirname, '../mods/agent-things-ui/hooks');
+  for (const name of ['foundation.js', 'presentation.js']) {
+    fs.copyFileSync(path.join(hooksDir, name), path.join(tempDir, name));
+  }
+  const presMod = await import(`${pathToFileURL(path.join(tempDir, 'presentation.js')).href}?v=${Math.random()}`);
+  const sliderSvg = presMod.slider(50, '#c89b38', 240);
+  assert.ok(sliderSvg.includes('height="6" rx="3"'));
+  assert.ok(sliderSvg.includes('r="8" fill="#ffffff"'));
+  assert.ok(!sliderSvg.includes('r="3.5"'));
+
+  const customPalette = pres.resolveAccentPalette('#F6C543');
+  const customBtnSvg = presMod.primary('更新进度', false, false, false, undefined, customPalette);
+  assert.ok(customBtnSvg.includes('fill="#F6C543"'));
+  assert.ok(customBtnSvg.includes('fill="#0D0D0D"'));
+
+  const defaultBtnSvg = presMod.primary('更新进度', false, false, false);
+  assert.ok(defaultBtnSvg.includes(`fill="${pres.accent.normal}"`));
+  assert.ok(defaultBtnSvg.includes(`fill="${pres.accent.onAccent}"`));
 });

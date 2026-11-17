@@ -27,6 +27,11 @@ function processHookInput(rawInput) {
     return {};
   }
 
+  // 同一轮对话后续多次触发大模型调用时跳过，避免重复生成卡片或重复注入快速通道提示
+  if (typeof payload.invocationNum === 'number' && payload.invocationNum > 0) {
+    return {};
+  }
+
   const lastUserInput = payload.lastUserInput;
   if (!isThingsCommand(lastUserInput)) {
     return {};
@@ -99,18 +104,18 @@ function processHookInput(rawInput) {
   const mdColon = lang === 'en' ? ': ' : '：';
   const userMarkdown = `${cardResult.embedTag}\n\n**${t('mdProgressHeading')}${mdColon}${stateText}**\n- **${t('mdTasksOverview')}**${mdColon}${tasksText}${noteText}\n- **${t('mdQuickActionsLabel')}**${mdColon}${t('mdQuickActionsText')}`;
 
+  const content = lang === 'en'
+    ? `[Agent Things Fast-Path] The session progress card artifact for this conversation has ALREADY been generated locally (conversation_id=${conversationId}). Do NOT call read_file (do NOT read SKILL.md), and do NOT call call_mcp_tool or render_things_card. Output the following markdown verbatim in your response:\n\n${userMarkdown}`
+    : `[Agent Things 快速通道] 当前会话任务进度卡片已由本地 Hook 直接生成（conversation_id=${conversationId}）。严禁再调用 read_file（不要读取 SKILL.md），严禁调用 call_mcp_tool 或 render_things_card。请直接在本次回复中原样输出以下完整 Markdown（不要遗漏 <agent-embed> 标签）：\n\n${userMarkdown}`;
+
   return {
     injectSteps: [
       {
-        systemMessage: {
-          systemMessage: t('hookPresentedMessage'),
-          metadata: {
-            user_markdown: userMarkdown,
-          },
-        },
+        // Use plain-string ephemeralMessage: language_server_bin panics on map<string,string> metadata fields
+        // and rejects hookEphemeralMessage, while plain-string ephemeralMessage stays UI-hidden and renders in 1 turn.
+        ephemeralMessage: content,
       },
     ],
-    terminationBehavior: 'terminate',
   };
 }
 

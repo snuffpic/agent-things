@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const { renderAntigravityCardHtml } = require('../src/antigravity-card.cjs');
 
-function createCardDomFixture({ initialProgress = 50, initialRevision = 10, convId = 'dom-test-conv' } = {}) {
+function createCardDomFixture({ initialProgress = 50, initialRevision = 10, convId = 'dom-test-conv', initialRecord = undefined } = {}) {
   const elements = new Map();
 
   function makeEl(id, tagName = 'div') {
@@ -60,17 +60,26 @@ function createCardDomFixture({ initialProgress = 50, initialRevision = 10, conv
   const historyView = makeEl('historyView', 'div');
   const editView = makeEl('editView', 'div');
   editView.hidden = true;
+  const scoreUnitEl = makeEl('__scoreUnit__', 'span');
+  const overviewScoreNumber = makeEl('overviewScoreNumber', 'span');
+  const overviewStatusLabel = makeEl('overviewStatusLabel', 'span');
+  const overviewTimestamp = makeEl('overviewTimestamp', 'div');
+  const overviewSourceLabel = makeEl('overviewSourceLabel', 'span');
+  const summaryBlock = makeEl('summaryBlock', 'div');
+  const overviewSummary = makeEl('overviewSummary', 'div');
+
+  const resolvedRecord = initialRecord === undefined ? {
+    state: 'unfinished',
+    progress: initialProgress,
+    note: '初始备注',
+    revision: initialRevision,
+  } : initialRecord;
 
   // Render production card HTML
   const html = renderAntigravityCardHtml({
     title: 'DOM 交互验收会话',
     conversationId: convId,
-    record: {
-      state: 'unfinished',
-      progress: initialProgress,
-      note: '初始备注',
-      revision: initialRevision,
-    },
+    record: resolvedRecord,
     tasks: [],
     revision: initialRevision,
   });
@@ -132,12 +141,32 @@ function createCardDomFixture({ initialProgress = 50, initialRevision = 10, conv
     confirm: () => true,
   };
 
+  const fakeBody = makeEl('__body__', 'body');
+  fakeBody.scrollHeight = 526;
+  fakeBody.offsetHeight = 526;
+  const shellEl = makeEl('agentThingsCard', 'div');
+  shellEl.scrollHeight = 526;
+  shellEl.offsetHeight = 526;
+  shellEl.getBoundingClientRect = () => ({ height: 526.2 });
+  const resizeObservers = [];
+  class FakeResizeObserver {
+    constructor(cb) {
+      this.cb = cb;
+      this.observed = [];
+      resizeObservers.push(this);
+    }
+    observe(target) {
+      this.observed.push(target);
+    }
+  }
+
   const fakeDocument = {
     readyState: 'loading', // 阻止自动调用 initCard() 启动真实 SSE 轮询定时器
+    body: fakeBody,
     addEventListener: () => {},
     getElementById: id => elements.get(id) || makeEl(id),
     querySelectorAll: () => [],
-    querySelector: () => null,
+    querySelector: sel => (sel === '.score-unit' ? scoreUnitEl : null),
   };
 
   const sandbox = {
@@ -146,6 +175,9 @@ function createCardDomFixture({ initialProgress = 50, initialRevision = 10, conv
     setTimeout: trackTimeout,
     clearTimeout: cancelTimeout,
     __cleanupCardTimers: cleanupCardTimers,
+    ResizeObserver: FakeResizeObserver,
+    getComputedStyle: () => ({ marginTop: '0px', marginBottom: '0px' }),
+    confirm: () => true,
     console,
     Date,
     Math,
@@ -169,19 +201,24 @@ function createCardDomFixture({ initialProgress = 50, initialRevision = 10, conv
       get savedRevision() { return savedRevision; },
       get currentProgress() { return currentProgress; },
       switchToEdit,
+      switchToOverview,
       onSliderInput,
       markFormDirty,
       handleRemoteSessionUpdate,
       onSaveRecord,
+      onClearClick,
       resolveConflictKeepDraft,
       onIncomingHostMessage,
       onSourceClick,
       onOpenPaneClick,
+      requestHostAuth,
+      setupHostAutoResize,
       dispose() {
-        if (sseReconnectTimer) { cancelTimeout(sseReconnectTimer); sseReconnectTimer = null; }
+        if (saveSwitchTimer) { clearTimeout(saveSwitchTimer); saveSwitchTimer = null; }
+        if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
         if (sseSource) { try { sseSource.close(); } catch(_) {} sseSource = null; }
         for (const [key, req] of pendingActions.entries()) {
-          if (req && req.timer) cancelTimeout(req.timer);
+          if (req && req.timer) clearTimeout(req.timer);
           pendingActions.delete(key);
         }
         __cleanupCardTimers();
@@ -206,6 +243,10 @@ function createCardDomFixture({ initialProgress = 50, initialRevision = 10, conv
     card: fakeWindow.__cardState,
     elements,
     postedToParent,
+    fakeBody,
+    shellEl,
+    resizeObservers,
+    fakeWindow,
     setProxyHandler(fn) { proxyHandler = fn; },
     getEl(id) { return elements.get(id); },
   };
@@ -494,5 +535,192 @@ test('DOM 回归 4：点击右上角「在侧栏打开」在已握手时走专�
     assert.equal(f3.getEl('btnOpenPane').disabled, false);
   } finally {
     f3.card.dispose();
+  }
+
+  // 4. 首次握手 pending（无宿主响应）时点击「在侧栏打开」在短超时内快速降级到 OPEN_SIDECAR，不傻等 4500ms
+  const f4 = createCardDomFixture();
+  try {
+    f4.card.setHostChannelPort(null);
+    f4.card.requestHostAuth().catch(() => {});
+    const t0 = performance.now();
+    await f4.card.onOpenPaneClick();
+    const elapsedMs = performance.now() - t0;
+    assert.ok(elapsedMs < 1500, `pending 握手降级应远快于 4500ms（实测 ${elapsedMs.toFixed(1)}ms）`);
+    assert.ok(
+      f4.postedToParent.some(p => p.data?.type === 'OPEN_SIDECAR' && p.data?.target === 'things/things_board'),
+      '快速降级后必须发送原生 OPEN_SIDECAR',
+    );
+  } finally {
+    f4.card.dispose();
+  }
+});
+
+test('antigravity-card: setupHostAutoResize reports initial natural height and live ResizeObserver changes', () => {
+  const f = createCardDomFixture();
+  try {
+    const triggerMeasure = f.card.setupHostAutoResize();
+    assert.equal(typeof triggerMeasure, 'function');
+    assert.equal(f.resizeObservers.length, 1);
+    assert.ok(f.resizeObservers[0].observed.includes(f.fakeBody));
+    assert.ok(f.resizeObservers[0].observed.includes(f.shellEl));
+
+    const firstResize = f.postedToParent.filter(p => p.data?.type === 'RESIZE');
+    assert.equal(firstResize.length, 1);
+    assert.equal(firstResize[0].data.height, 531, '526.2 + 4 slack rounds up to 531px above 200px default');
+    assert.equal(firstResize[0].targetOrigin, '*');
+
+    // Small fluctuation within deadband (<= 4px) is ignored
+    f.fakeBody.scrollHeight = 528;
+    f.fakeBody.offsetHeight = 528;
+    f.shellEl.scrollHeight = 528;
+    f.shellEl.offsetHeight = 528;
+    f.shellEl.getBoundingClientRect = () => ({ height: 528 });
+    f.resizeObservers[0].cb();
+    assert.equal(f.postedToParent.filter(p => p.data?.type === 'RESIZE').length, 1);
+
+    // Expanding card triggers live RESIZE update
+    f.fakeBody.scrollHeight = 680;
+    f.fakeBody.offsetHeight = 680;
+    f.shellEl.scrollHeight = 680;
+    f.shellEl.offsetHeight = 680;
+    f.shellEl.getBoundingClientRect = () => ({ height: 680 });
+    f.resizeObservers[0].cb();
+    const resizes = f.postedToParent.filter(p => p.data?.type === 'RESIZE');
+    assert.equal(resizes.length, 2);
+    assert.equal(resizes[1].data.height, 684);
+
+    // Top-level standalone page (window.parent === window) does not emit RESIZE
+    f.fakeWindow.parent = f.fakeWindow;
+    f.card.setupHostAutoResize();
+    assert.equal(f.postedToParent.filter(p => p.data?.type === 'RESIZE').length, 2);
+  } finally {
+    f.card.dispose();
+  }
+});
+
+test('DOM 回归 5：手动调整保存与 SSE 竞态、无 SSE 回包兜底、取消恢复、清除重置均即时同步总览 DOM', async () => {
+  // 1. 空白会话开启手动调整至 100%，保存途中 SSE 抢先抵达被 dirty 拦截，保存完与切回总览均须呈现 100%
+  const f1 = createCardDomFixture({ initialProgress: null, initialRevision: 0, initialRecord: null });
+  try {
+    f1.card.switchToEdit();
+    f1.card.onSliderInput(100);
+    f1.getEl('txtNote').value = '手动调至 100%';
+
+    f1.setProxyHandler(msg => {
+      if (msg.type === 'AGENT_THINGS_ACTION_PROXY' && msg.action === 'update') {
+        // 模拟 SSE change 先于 ACTION_RESULT 到达（此时卡片仍为 isFormDirty === true）
+        f1.card.handleRemoteSessionUpdate({
+          session: {
+            conversationId: 'dom-test-conv',
+            recordRevision: 1,
+            progress: { state: 'completed', progress: 100, note: '手动调至 100%', source: 'manual', updatedAt: '2026-11-17T10:44:00.000Z' },
+          },
+        });
+        f1.card.onIncomingHostMessage({
+          type: 'AGENT_THINGS_ACTION_RESULT',
+          nonce: msg.nonce,
+          action: 'update',
+          success: true,
+          session: {
+            conversationId: 'dom-test-conv',
+            recordRevision: 1,
+            progress: 100,
+            state: 'completed',
+            note: '手动调至 100%',
+            source: 'manual',
+            updatedAt: '2026-11-17T10:44:00.000Z',
+            summary: '手动调至 100%',
+          },
+        });
+      }
+    });
+
+    await f1.card.onSaveRecord();
+    assert.equal(f1.card.isFormDirty, false);
+    assert.equal(f1.card.savedRevision, 1);
+    assert.equal(f1.getEl('overviewScoreNumber').textContent, 100);
+    assert.equal(f1.getEl('__scoreUnit__').hidden, false);
+    assert.equal(f1.getEl('overviewStatusLabel').textContent, '全部完成');
+    assert.equal(f1.getEl('summaryBlock').hidden, false);
+    assert.equal(f1.getEl('overviewSummary').textContent, '手动调至 100%');
+    assert.match(f1.getEl('overviewTimestamp').textContent, /^\d{1,2}\/\d{1,2} \d{2}:\d{2}$/);
+
+    f1.card.switchToOverview();
+    assert.equal(f1.getEl('overviewScoreNumber').textContent, 100);
+
+    // 2. 无 SSE 推送纯靠 ACTION_RESULT 回包保存，也能当场刷新总览
+    f1.card.switchToEdit();
+    f1.card.onSliderInput(85);
+    f1.getEl('txtNote').value = '直刷备注';
+    f1.setProxyHandler(msg => {
+      if (msg.type === 'AGENT_THINGS_ACTION_PROXY' && msg.action === 'update') {
+        f1.card.onIncomingHostMessage({
+          type: 'AGENT_THINGS_ACTION_RESULT',
+          nonce: msg.nonce,
+          action: 'update',
+          success: true,
+          session: {
+            conversationId: 'dom-test-conv',
+            recordRevision: 2,
+            progress: 85,
+            state: 'unfinished',
+            note: '直刷备注',
+            source: 'manual',
+            updatedAt: '2026-11-17T10:45:00.000Z',
+            summary: '直刷备注',
+          },
+        });
+      }
+    });
+    await f1.card.onSaveRecord();
+    f1.card.switchToOverview();
+    assert.equal(f1.getEl('overviewScoreNumber').textContent, 85);
+    assert.equal(f1.getEl('overviewStatusLabel').textContent, '有遗留事项');
+    assert.equal(f1.getEl('overviewSummary').textContent, '直刷备注');
+
+    // 3. 编辑草稿未保存期间远端推送 60%，点击取消返回总览时立刻同步到 60%
+    f1.card.switchToEdit();
+    f1.card.onSliderInput(30);
+    f1.card.handleRemoteSessionUpdate({
+      session: {
+        conversationId: 'dom-test-conv',
+        recordRevision: 3,
+        progress: { state: 'unfinished', progress: 60, note: '远端推送60', source: 'analysis', updatedAt: '2026-11-17T10:46:00.000Z' },
+      },
+    });
+    assert.equal(f1.getEl('overviewScoreNumber').textContent, 85, '编辑期间总览未破坏表单草稿');
+    f1.card.switchToOverview();
+    assert.equal(f1.getEl('overviewScoreNumber').textContent, 60, '取消退出编辑后立即应用远端暂存快照');
+    assert.equal(f1.getEl('overviewSourceLabel').textContent, '自动分析');
+
+    // 4. 清除操作后立刻重置回 尚未开始 / — 且版本号归 0
+    f1.setProxyHandler(msg => {
+      if (msg.type === 'AGENT_THINGS_ACTION_PROXY' && msg.action === 'clear') {
+        f1.card.onIncomingHostMessage({
+          type: 'AGENT_THINGS_ACTION_RESULT',
+          nonce: msg.nonce,
+          action: 'clear',
+          success: true,
+          session: {
+            conversationId: 'dom-test-conv',
+            recordRevision: 0,
+            progress: null,
+            state: 'unstarted',
+            note: '',
+            summary: '',
+            source: 'manual',
+            updatedAt: '2026-11-17T10:47:00.000Z',
+          },
+        });
+      }
+    });
+    await f1.card.onClearClick();
+    assert.equal(f1.card.savedRevision, 0);
+    assert.equal(f1.getEl('overviewScoreNumber').textContent, '—');
+    assert.equal(f1.getEl('__scoreUnit__').hidden, true);
+    assert.equal(f1.getEl('overviewStatusLabel').textContent, '尚未开始');
+    assert.equal(f1.getEl('summaryBlock').hidden, true);
+  } finally {
+    f1.card.dispose();
   }
 });

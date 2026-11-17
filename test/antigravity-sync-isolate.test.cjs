@@ -1245,3 +1245,78 @@ test('Antigravity 多入口隔离与端到端自愈同步套件', async (t) => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('aux-pane-split 开启 sidecar 时，主对话内联 agent-embed-iframe 仍受控注入 loadToken，artifact-dynamic-ui-iframe 仍受 isCardTab 隔离', async () => {
+  const fsSync = require('node:fs');
+  const tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'ag-inline-embed-test-'));
+  const brainDir = path.join(tmpDir, 'brain');
+  const convId = 'conv-inline-aux';
+  const service = new AntigravityService({
+    port: 0,
+    stateFile: path.join(tmpDir, 'manual-state.json'),
+    brainDir,
+  });
+  await service.start();
+  const { generateCardArtifact } = require('../src/antigravity-card.cjs');
+  const harnessCode = fsSync.readFileSync(path.join(__dirname, '../src/harnesses/antigravity/antigravity-harness.js'), 'utf8');
+
+  try {
+    const port = service.http.credentials.port;
+    const artifact = generateCardArtifact({
+      conversationId: convId,
+      brainDir: path.join(brainDir, convId),
+      stateFile: service.stateFile,
+      connection: { origin: `http://127.0.0.1:${port}` },
+    });
+    const html = fsSync.readFileSync(artifact.path, 'utf8');
+    const fakeWindow = {
+      location: {
+        pathname: `/c/${convId}`,
+        href: `https://127.0.0.1:50364/c/${convId}?tab=sidecar__things%2Fthings_board__%2F`,
+      },
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      crypto: { getRandomValues: arr => arr.fill(7) },
+      __agentThingsConnection: {
+        origin: `http://127.0.0.1:${port}`,
+        token: service.http.credentials.token,
+        brainDir,
+      },
+    };
+    const runner = new Function('window', 'document', 'fetch', 'SERVICE_ORIGIN', 'headers', `${harnessCode}\nreturn window.__antigravityHarnessSecurity;`);
+    const security = runner(fakeWindow, {}, fetch, `http://127.0.0.1:${port}`, {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${service.http.credentials.token}`,
+    });
+
+    // 1. 内联对话卡片：虽被 aux-pane-split 包裹且当前 URL tab 为 sidecar__things，仍必须完成校验与 loadToken 注入
+    let inlineSetVal = null;
+    const inlineIframe = {
+      isConnected: true,
+      contentWindow: { location: { href: 'about:blank' } },
+      getAttribute: k => (k === 'data-testid' ? 'agent-embed-iframe' : null),
+      closest: sel => (sel === '[data-testid="aux-pane-split"]' || sel === '[data-testid="agent-embed"]' ? {} : null),
+      addEventListener: () => {},
+    };
+    await security.handleSrcdocSetter(inlineIframe, html, val => { inlineSetVal = val; });
+    assert.ok(inlineSetVal && inlineSetVal.includes('window.__agentThingsLoadToken'), 'aux-pane-split 下内联 agent-embed-iframe 必须注入 loadToken');
+    assert.equal(security.registeredCards.has(inlineIframe.contentWindow), true, '内联卡片必须进入 registeredCards 登记簿');
+
+    // 2. 右侧 Artifact 独立预览 iframe：处于 aux-pane-split 且 tab 不是 things-card.html 时，绝不登记或注入 loadToken
+    let auxArtifactSetVal = null;
+    const auxArtifactIframe = {
+      isConnected: true,
+      contentWindow: { location: { href: 'about:blank' } },
+      getAttribute: k => (k === 'data-testid' ? 'artifact-dynamic-ui-iframe' : null),
+      closest: sel => (sel === '[data-testid="aux-pane-split"]' ? {} : null),
+      addEventListener: () => {},
+    };
+    await security.handleSrcdocSetter(auxArtifactIframe, html, val => { auxArtifactSetVal = val; });
+    assert.ok(!auxArtifactSetVal.includes('window.__agentThingsLoadToken = "dyn-token-'), '非 card tab 下的 artifact-dynamic-ui-iframe 不得注入动态 loadToken');
+    assert.equal(security.registeredCards.has(auxArtifactIframe.contentWindow), false);
+    fakeWindow.__antigravityHarnessDispose?.();
+  } finally {
+    await service.stop();
+    fsSync.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

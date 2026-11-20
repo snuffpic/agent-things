@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Agent Things",
+    "description": "在会话侧栏与工作区提供 Things 风格进度圆环、备忘、/things 命令与带来源定位的 AI 待办提取。",
+    "detail": "docs/DETAIL.zh.md"
+  }
+}

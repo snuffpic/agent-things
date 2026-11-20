@@ -4,10 +4,15 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-async function simulate(actions, { first = false, select = ['antigravity'], confirm = false, tty = true, updateInfo = { currentVersion: '1.0.0', available: false }, updateError = null, initial = null, codexRunning = false, codexHealthy = codexRunning } = {}) {
+async function simulate(actions, { first = false, select = ['antigravity'], confirm = false, tty = true, updateInfo = { currentVersion: '1.0.0', available: false }, updateError = null, initial = null, codexRunning = false, codexHealthy = codexRunning, deepseek = undefined } = {}) {
   let config = first ? null : initial || { lang: 'en', enabledApps: ['codex'] };
   const calls = [], output = [], initialSelections = [], menus = [];
-  const env = { codex: { id: 'codex', name: 'Codex', installed: true, running: codexRunning }, antigravity: { id: 'antigravity', name: 'Antigravity', installed: true }, claude: { id: 'claude', name: 'Claude', installed: true } };
+  const env = {
+    codex: { id: 'codex', name: 'Codex', installed: true, running: codexRunning },
+    antigravity: { id: 'antigravity', name: 'Antigravity', installed: true },
+    claude: { id: 'claude', name: 'Claude', installed: true },
+    ...(deepseek ? { deepseek } : {}),
+  };
   const queue = [...actions];
   const mocks = {
     'node:fs': { existsSync: () => !first, readFileSync: () => { throw Error('missing config'); } },
@@ -72,4 +77,54 @@ test('opening the installed CLI shows why Codex has not attached before presenti
 test('a live process with failed authentication is diagnosed before debugger availability', async () => {
   const { output } = await simulate(['exit'], { codexRunning: true, codexHealthy: false });
   assert.ok(output.some(line => line.includes('authenticated health check failed')));
+});
+
+test('doctor reports DeepSeek Harness health, link validity, analysis model route, and Node/link problems', async () => {
+  const healthy = await simulate(['exit'], {
+    initial: { lang: 'zh', enabledApps: ['deepseek'] },
+    deepseek: {
+      id: 'deepseek',
+      name: 'DeepSeek Harness',
+      installed: true,
+      nodeVersion: 'v24.19.0',
+      nodeCompatible: true,
+      profiles: ['web'],
+      pluginProfiles: ['web'],
+      healthyPluginProfiles: ['web'],
+      brokenPluginProfiles: [],
+      profileLinks: [{ profile: 'web', linkPath: '/tmp/runtime/packages/dsh-agent-things', valid: true, version: '1.3.4', error: null }],
+      bridge: { configured: true, reachable: true, port: 62983, pid: 999 },
+      analysisConfig: { mode: 'custom', provider: 'custom-openai', model: 'gpt-4o-mini', reasoningEffort: 'low' },
+      markedSessions: 3,
+    },
+  });
+  const text = healthy.output.join('\n');
+  assert.match(text, /DeepSeek Harness:/);
+  assert.match(text, /v24\.19\.0 \(兼容\)/);
+  assert.match(text, /web \(v1\.3\.4\)/);
+  assert.match(text, /运行中 \(127\.0\.0\.1:62983\)/);
+  assert.match(text, /custom-openai\/gpt-4o-mini · low/);
+  assert.match(text, /已记录会话: 3/);
+
+  const broken = await simulate(['exit'], {
+    initial: { lang: 'zh', enabledApps: ['deepseek'] },
+    deepseek: {
+      id: 'deepseek',
+      name: 'DeepSeek Harness',
+      installed: true,
+      nodeVersion: 'v22.14.0',
+      nodeCompatible: false,
+      profiles: ['web'],
+      pluginProfiles: ['web'],
+      healthyPluginProfiles: [],
+      brokenPluginProfiles: ['web'],
+      profileLinks: [{ profile: 'web', linkPath: '/missing/pkg', valid: false, version: null, error: 'missing-target' }],
+      bridge: { configured: false, reachable: false, port: null, pid: null },
+      analysisConfig: { mode: 'default', provider: null, model: null, reasoningEffort: null },
+      markedSessions: 0,
+    },
+  });
+  const brokenText = broken.output.join('\n');
+  assert.match(brokenText, /低于 24\.9/);
+  assert.match(brokenText, /自动选择 · 4\.1 Flash · Low/);
 });

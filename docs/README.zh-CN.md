@@ -4,7 +4,7 @@
 
 当你在同时处理多个会话时或太久没使用某个会话，Agent Things 可以帮助你快速了解会话的进度和待办事项，从而判断是否需要归档和追踪，你还可以点击查看来源快速跳转、回顾历史信息。
 
-Agent Things 是 macOS 上的 AI 编程会话进度插件，支持 **ChatGPT**、**Antigravity** 和 **Claude Desktop** 本地会话。灵感来自 [Things 3](https://culturedcode.com/things/)：用一个进度圆环概括一件事做到了哪里，打开后就是一份清楚的待办清单。
+Agent Things 是 macOS 上的 AI 编程会话进度插件，支持 **ChatGPT**、**Antigravity**、**Claude Desktop** 本地会话以及 **DeepSeek Harness**（`dsh`）。灵感来自 [Things 3](https://culturedcode.com/things/)：用一个进度圆环概括一件事做到了哪里，打开后就是一份清楚的待办清单。
 
 > 当前为 Beta 版本，已知限制见文末。本项目与 Cultured Code、OpenAI、Google、Anthropic 均无关联。
 
@@ -37,7 +37,7 @@ Agent Things 是 macOS 上的 AI 编程会话进度插件，支持 **ChatGPT**�
 **自动整理任务**
 
 - 点击「更新进度」，插件读取会话中的对话，调用你已登录的模型整理出任务清单，区分已完成和剩余的事项，并标出受阻的任务。
-（默认选用性价比最高的模型：ChatGPT：Luna，claude code：Haiku，Antigravity：Gemini 3.8）
+（默认选用性价比最高的模型：ChatGPT：Luna，Claude Code：Haiku，Antigravity：Gemini 3.8，DeepSeek Harness：DeepSeek-V4.1-Flash · Low，可在「插件 → agent-things-dsh」页面自定义任务解析模型与思考程度）
 - 再次更新时只增量处理新的对话，已有任务和完成记录保持不变。
 - 每项任务都能跳回会话中对应的原文，方便核对。
 
@@ -63,10 +63,11 @@ Agent Things 是 macOS 上的 AI 编程会话进度插件，支持 **ChatGPT**�
 | ChatGPT                    | 会话列表进度圆环、状态面板、`/things`          | 无。从 Dock 正常打开即可，见下方“为什么 ChatGPT 会重新打开一次”                                  |
 | Antigravity                | 会话列表进度圆环、侧边 Things 面板、`/things`  | 无                                                                       |
 | Claude Desktop（本地 Code 会话） | 消息流中的 `/things` 卡片；会话列表进度圆环需手动开启 | 安装后执行 `/reload-plugins`；如需会话列表圆环，开启「开发者 → Enable Main Process Debugger」 |
+| DeepSeek Harness（`dsh`）    | 会话列表进度圆环、右侧 `things` 面板、`/things`、插件详情页模型配置 | 需 Node.js 24.9 及以上；运行 `dsh --profile web` 启动                            |
 
 ## 安装
 
-需要 macOS（Apple Silicon 或 Intel）、Node.js 22 及以上，以及已安装并登录的上述客户端之一。
+需要 macOS（Apple Silicon 或 Intel）、Node.js 22 及以上（若启用 DeepSeek Harness 需 Node.js 24.9+），以及已安装并登录的上述客户端之一。
 
 ```sh
 npx agent-things
@@ -88,9 +89,10 @@ npx agent-things setup --yes
   - ChatGPT：`~/Library/Application Support/CodexSessionStatus/manual-state.json`
   - Antigravity：`~/.gemini/antigravity/session-status/manual-state.json`
   - Claude：`~/Library/Application Support/AgentThings/claude/manual-state.json`
+  - DeepSeek Harness：`~/Library/Application Support/AgentThings/deepseek/manual-state.json`
 - 插件没有任何遥测或上传服务。
-- 「更新进度」会通过本机已登录的 ChatGPT 内置 Codex CLI、Antigravity 命令行或 Claude Code（Haiku）调用模型，并把会话中的用户与助手文本发送给该模型；工具原始输出、思考过程和图片不会发送。
-- 插件通过客户端的本机调试接口显示界面，只接受本机回环地址。详细说明见 [SECURITY.md](../SECURITY.md)。
+- 「更新进度」会通过本机已登录的 ChatGPT 内置 Codex CLI、Antigravity 命令行、Claude Code（Haiku）或 DeepSeek Harness（默认 `DeepSeek-V4.1-Flash · Low`，可在「插件 → agent-things-dsh」调整）调用模型，并把会话中的用户与助手文本发送给该模型；工具原始输出、思考过程和图片不会发送。
+- 桌面端 Electron 客户端通过本机调试接口显示界面（只接受本机回环地址）；DeepSeek Harness 则以 `dsh` 原生 Cordis 插件方式挂载运行。详细说明见 [SECURITY.md](../SECURITY.md)。
 
 ## 升级与卸载
 
@@ -128,7 +130,7 @@ npx agent-things setup --yes
 
 **怎么切换中文和英文？**
 
-运行 `npx agent-things`，在管理菜单中选择「切换界面与分析语言」。切换会重新安装三端的技能，界面随之切换；之后在客户端中重新连接 MCP 服务，助手看到的工具说明也会换成新语言。已有任务在下一次「更新进度」时改写为新语言，备注保持原样。
+运行 `npx agent-things`，在管理菜单中选择「切换界面与分析语言」。切换会重新安装已启用客户端的技能，界面随之切换；之后在客户端中重新连接 MCP 服务，助手看到的工具说明也会换成新语言。已有任务在下一次「更新进度」时改写为新语言，备注保持原样。
 
 **为什么 ChatGPT 打开后窗口会关掉再重新打开一次？**
 
@@ -196,7 +198,7 @@ Agent Things 依赖 LLM 更新具体待办事项，免去了繁琐的记录过�
 
 **卸载后数据还在吗？**
 
-卸载会保留账本与备份，重新安装后进度会自动恢复。如需彻底删除，可在卸载后手动删除“数据与隐私”中列出的三个数据目录。
+卸载会保留账本与备份，重新安装后进度会自动恢复。如需彻底删除，可在卸载后手动删除“数据与隐私”中列出的数据目录。
 
 ## 已知限制
 
@@ -218,5 +220,4 @@ npm run verify
 
 ## 更新计划
 
-- DeepSeek harness 支持
 - OKtaMind 支持

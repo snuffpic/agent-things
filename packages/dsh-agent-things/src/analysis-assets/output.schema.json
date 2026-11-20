@@ -1,0 +1,96 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "不超过40个汉字的整体进展摘要，说明当前核心目标与剩余工作。"
+    },
+    "gitPush": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "not_pushed",
+            "pushed"
+          ]
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "status",
+        "evidenceRefs"
+      ],
+      "additionalProperties": false
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "knownTaskId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "完整任务标题（动作 + 目标对象），保留完整范围；不要包含完成状态、等待原因或进度评论。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "blocked",
+              "needs_verification",
+              "done"
+            ]
+          },
+          "evidenceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "不超过20个汉字的简短任务标题（精简版动作 + 对象），供独立识别任务。严禁写成“已合入”“待定”“待实测”“未做，待安排”等纯状态描述或进展批注。"
+          }
+        },
+        "required": [
+          "knownTaskId",
+          "title",
+          "summary",
+          "status",
+          "evidenceRefs"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "removedTaskIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "仅明确取消、替代或与当前目标无关的既有任务 ID；完成的任务保留。"
+    }
+  },
+  "required": [
+    "summary",
+    "gitPush",
+    "tasks",
+    "removedTaskIds"
+  ],
+  "additionalProperties": false,
+  "description": "本批任务变化；全局计数由程序合并后生成。"
+}

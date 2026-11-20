@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Agent Things",
+    "description": "Things-style session progress rings, notes, /things commands, and source-linked AI task extraction.",
+    "detail": "docs/DETAIL.md"
+  }
+}

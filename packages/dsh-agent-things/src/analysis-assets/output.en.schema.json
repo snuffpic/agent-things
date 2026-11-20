@@ -1,0 +1,96 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Concise overall summary (at most 120 chars) stating the current goal and remaining work."
+    },
+    "gitPush": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "not_pushed",
+            "pushed"
+          ]
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "status",
+        "evidenceRefs"
+      ],
+      "additionalProperties": false
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "knownTaskId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Full task title (action + target) preserving full scope; do not put completion status, waiting reasons, or progress remarks here."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "blocked",
+              "needs_verification",
+              "done"
+            ]
+          },
+          "evidenceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "Short standalone task title (at most 60 chars, concise action + target). NEVER write status remarks or blocker notes such as 'merged to main', 'pending decision', 'waiting for test', or 'not scheduled yet'."
+          }
+        },
+        "required": [
+          "knownTaskId",
+          "title",
+          "summary",
+          "status",
+          "evidenceRefs"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "removedTaskIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Existing task IDs explicitly cancelled, superseded, or unrelated to the current goal; keep completed tasks."
+    }
+  },
+  "required": [
+    "summary",
+    "gitPush",
+    "tasks",
+    "removedTaskIds"
+  ],
+  "additionalProperties": false,
+  "description": "Incremental task updates for this batch; global counts are computed after merge."
+}

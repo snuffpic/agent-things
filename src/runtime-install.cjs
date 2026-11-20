@@ -425,7 +425,7 @@ function commitInstallation(dataDir, targetPaths = []) {
 }
 
 function stageRuntime(source, stage, installId) {
-  for (const directory of ['src', 'bin', 'skills', 'native', 'mods']) {
+  for (const directory of ['src', 'bin', 'skills', 'native', 'mods', 'packages']) {
     const srcDir = path.join(source, directory);
     if (!fs.existsSync(srcDir)) continue;
     fs.cpSync(srcDir, path.join(stage, directory), {
@@ -434,7 +434,7 @@ function stageRuntime(source, stage, installId) {
     });
   }
   fs.mkdirSync(path.join(stage, 'scripts'), { recursive: true });
-  for (const name of ['setup-antigravity-service.cjs', 'setup-claude-service.cjs', 'build-codex-bundle.cjs', 'build-antigravity-bundle.cjs', 'build-shared-ui.cjs']) {
+  for (const name of ['setup-antigravity-service.cjs', 'setup-claude-service.cjs', 'build-codex-bundle.cjs', 'build-antigravity-bundle.cjs', 'build-dsh-bundle.cjs', 'build-shared-ui.cjs']) {
     const scriptFile = path.join(source, 'scripts', name);
     if (fs.existsSync(scriptFile)) {
       fs.copyFileSync(scriptFile, path.join(stage, 'scripts', name));

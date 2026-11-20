@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.4 (2026-11-20)
+
+- **DeepSeek Harness (`dsh`) full integration**: Added native support for DeepSeek Harness (`dsh --profile web`) via the bundled Cordis package `packages/dsh-agent-things` (`agent-things-dsh`) and standalone stdio MCP server (`bin/dsh-mcp.cjs`), bringing left-sidebar progress rings, the `things` right-pane detail view, `/things` inline command cards, incremental AI task extraction, and local ledger persistence (`~/Library/Application Support/AgentThings/deepseek/manual-state.json`).
+- **Task analysis model & reasoning selector in Plugin Manager**: Added the `plugins.bundle.config` slot (`ThingsAnalysisSettings`) using `@deepseek-ai/dsh-client-ui-primitives` (`MenuSurface`, `MenuGroup`, `SegmentedControl`, `Button`, `Tag`, `Input`) so users can pick any DeepSeek account, official API, or custom/third-party `dsh` model and reasoning level (`Off / Low / High / Max`, defaulting to `DeepSeek-V4.1-Flash · Low`), with automatic temporary fallback when a saved custom model becomes unavailable and responsive Refresh button sizing across narrow/mobile widths.
+- **CLI, `doctor`, and upgrade parity**: Updated `agent-things` environment probing, `doctor` diagnostics, interactive wizard, `--help`, and `npm-updates` verification to check `dsh` Node `>= 24.9` compatibility, profile `link:` integrity, live bridge/ledger/model routing status, and bundle health.
+
+---
+
+- **新增 DeepSeek Harness（`dsh`）完整接入**：通过内置 Cordis 插件包 `packages/dsh-agent-things`（`agent-things-dsh`）与独立 MCP 入口 `bin/dsh-mcp.cjs`，为 `dsh --profile web` 带来会话列表进度圆环、右侧 `things` 任务面板、`/things` 对话内嵌卡片、增量 AI 任务整理与本地账本持久化（`~/Library/Application Support/AgentThings/deepseek/manual-state.json`）。
+- **插件详情页「任务解析模型」与思考程度配置**：接入官方 `plugins.bundle.config` 配置槽位与 `@deepseek-ai/dsh-client-ui-primitives` 原生组件（`MenuSurface`、`SegmentedControl`、`Tag`、`Button` 等），支持读取当前全部可用模型（含 DeepSeek 账号、官方 API 与 `dsh` 自定义 API 模型），默认优选 `DeepSeek-V4.1-Flash · Low`；当原选自定义模型不可用时支持在设置页警示并临时回退到默认可用模型，且头部刷新按钮支持随容器宽度自动切换「刷新模型 / 刷新 / 仅图标」。
+- **终端 CLI 与 `doctor` 检查对齐四端**：补全 `agent-things` 探针、`doctor` 诊断、交互向导、`--help` 与自升级校验对 DeepSeek Harness 的支持，涵盖 Node `>= 24.9` 兼容性校验、profile 挂载链接完整性检查、Web 桥接健康状态与解析模型路线展示。
+
 ## 1.3.3 (2026-11-17)
 
 - **One-click updates & manual checks across every surface**: Added the `.app-update` banner (`Update available` / `Upgrade` / stage progress / retry / MCP reconnect hint) and wired `app-update-info` / `app-update-start` RPC proxying to both Antigravity inline `/things` cards (`src/antigravity-card.cjs`, `antigravity-harness.js`) and the Antigravity Things side panel (`things_board/main.mjs` & `index.html`).

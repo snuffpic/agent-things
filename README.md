@@ -4,7 +4,7 @@ English | [简体中文](docs/README.zh-CN.md)
 
 When you juggle several sessions at once, or come back to one you haven't touched in a while, Agent Things shows you at a glance how far each session has got and what is still open, so you can decide whether to archive it or keep following up. You can also jump from any task back to the message it came from.
 
-Agent Things is a session progress plugin for AI coding sessions on macOS. It supports local sessions in **ChatGPT**, **Antigravity** and **Claude Desktop**. Inspired by [Things 3](https://culturedcode.com/things/): one progress ring sums up where a piece of work stands, and opening it gives you a clear to-do list.
+Agent Things is a session progress plugin for AI coding sessions on macOS. It supports local sessions in **ChatGPT**, **Antigravity**, **Claude Desktop**, and **DeepSeek Harness** (`dsh`). Inspired by [Things 3](https://culturedcode.com/things/): one progress ring sums up where a piece of work stands, and opening it gives you a clear to-do list.
 
 > This is a beta release; see Known limitations below. This project is not affiliated with Cultured Code, OpenAI, Google or Anthropic.
 
@@ -37,7 +37,7 @@ Agent Things is a session progress plugin for AI coding sessions on macOS. It su
 **Tasks organized for you**
 
 - Click **Update progress** and the plugin reads the conversation, asks the model you are already signed in to for a task list, separates completed from remaining items and flags blocked tasks.
-  (By default it picks the most cost-effective model in each client: ChatGPT: Luna, Claude Code: Haiku, Antigravity: Gemini 3.8.)
+  (By default it picks the most cost-effective model in each client: ChatGPT: Luna, Claude Code: Haiku, Antigravity: Gemini 3.8, DeepSeek Harness: DeepSeek-V4.1-Flash · Low, which can also be customized in **Plugins → agent-things-dsh**.)
 - Later updates only process new messages; existing tasks and completion records stay as they are.
 - Every task links back to the message it came from, so you can check it.
 
@@ -63,10 +63,11 @@ Agent Things is a session progress plugin for AI coding sessions on macOS. It su
 | ChatGPT | Progress rings in the session list, status panel, `/things` | None. Open it from the Dock as usual; see "Why does ChatGPT close and reopen once?" below |
 | Antigravity | Progress rings in the session list, Things side panel, `/things` | None |
 | Claude Desktop (local Code sessions) | `/things` card in the conversation; session-list rings must be turned on | Run `/reload-plugins` after installing; for session-list rings, turn on **Developer → Enable Main Process Debugger** |
+| DeepSeek Harness (`dsh`) | Progress rings in the session list, `things` right-side pane, `/things`, Plugin Manager model settings | Requires Node.js 24.9+; start with `dsh --profile web` |
 
 ## Installation
 
-Requires macOS (Apple Silicon or Intel), Node.js 22 or later, and at least one of the clients above, installed and signed in.
+Requires macOS (Apple Silicon or Intel), Node.js 22 or later (Node.js 24.9+ when enabling DeepSeek Harness), and at least one of the clients above, installed and signed in.
 
 ```sh
 npx agent-things
@@ -88,9 +89,10 @@ To force the latest version, run `npx agent-things@latest`.
   - ChatGPT: `~/Library/Application Support/CodexSessionStatus/manual-state.json`
   - Antigravity: `~/.gemini/antigravity/session-status/manual-state.json`
   - Claude: `~/Library/Application Support/AgentThings/claude/manual-state.json`
+  - DeepSeek Harness: `~/Library/Application Support/AgentThings/deepseek/manual-state.json`
 - The plugin has no telemetry and uploads nothing.
-- **Update progress** calls a model through the Codex CLI built into ChatGPT, the Antigravity command line, or Claude Code (Haiku), whichever you are signed in to locally, and sends the user and assistant text of the session to that model. Raw tool output, reasoning and images are not sent.
-- The plugin draws its interface through each client's local debugging interface and only accepts loopback addresses. See [SECURITY.md](SECURITY.md) for details.
+- **Update progress** calls a model through the Codex CLI built into ChatGPT, the Antigravity command line, Claude Code (Haiku), or DeepSeek Harness (`DeepSeek-V4.1-Flash · Low` by default, or the provider/model selected in **Plugins → agent-things-dsh**), and sends the user and assistant text of the session to that model. Raw tool output, reasoning and images are not sent.
+- For desktop Electron apps, the plugin draws its interface through each client's local debugging interface and only accepts loopback addresses; for DeepSeek Harness, it mounts natively inside `dsh` as a Cordis plugin. See [SECURITY.md](SECURITY.md) for details.
 
 ## Updating and uninstalling
 
@@ -128,7 +130,7 @@ These commands apply to ChatGPT only:
 
 **How do I switch between English and Chinese?**
 
-Run `npx agent-things` and choose **Switch language** in the management menu. This reinstalls the skills for all three clients and the interface switches with it; reconnect the MCP server in your client so the assistant also sees the tool descriptions in the new language. Existing tasks are rewritten in the new language at the next **Update progress**; notes are left as they are.
+Run `npx agent-things` and choose **Switch language** in the management menu. This reinstalls the skills for all enabled clients and the interface switches with it; reconnect the MCP server in your client so the assistant also sees the tool descriptions in the new language. Existing tasks are rewritten in the new language at the next **Update progress**; notes are left as they are.
 
 **Why does ChatGPT close and reopen once?**
 
@@ -196,7 +198,7 @@ Not yet. The plugin relies on native macOS interfaces to manage client startup a
 
 **Is my data kept after uninstalling?**
 
-Uninstalling keeps your ledger and backups, and progress comes back when you reinstall. To delete everything, remove the three data folders listed under "Data and privacy" after uninstalling.
+Uninstalling keeps your ledger and backups, and progress comes back when you reinstall. To delete everything, remove the data folders listed under "Data and privacy" after uninstalling.
 
 ## Known limitations
 
@@ -218,5 +220,4 @@ npm run verify
 
 ## Roadmap
 
-- DeepSeek harness support
 - OKtaMind support

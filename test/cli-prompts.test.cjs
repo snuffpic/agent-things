@@ -31,6 +31,26 @@ test('Claude selection restores saved choice and includes the third installed ho
   const pending = ui.selectApps({ ...env, claude: { installed: true } }, 'en', ['claude']);
   ui.key('return'); assert.deepEqual(await pending, ['claude']);
 });
+test('DeepSeek Harness renders in selectApps and shows warning indicator when Node < 24.9', async () => {
+  const ui = prompts();
+  const pending = ui.selectApps({
+    ...env,
+    deepseek: { id: 'deepseek', name: 'DeepSeek Harness', installed: true, nodeCompatible: true },
+  }, 'zh', ['deepseek']);
+  ui.key('return');
+  assert.deepEqual(await pending, ['deepseek']);
+  assert.ok(ui.output().includes('DeepSeek Harness'));
+
+  const langUi = prompts();
+  const langPending = langUi.selectLanguageWithProbe({
+    codex: { id: 'codex', name: 'Codex (ChatGPT)', installed: true },
+    antigravity: { id: 'antigravity', name: 'Antigravity', installed: true },
+    deepseek: { id: 'deepseek', name: 'DeepSeek Harness', installed: true, nodeVersion: 'v22.14.0', nodeCompatible: false },
+  }, 'zh');
+  langUi.key('return');
+  await langPending;
+  assert.ok(langUi.output().includes('\x1b[33m!\x1b[0m DeepSeek Harness'), 'Incompatible dsh Node should render yellow warning icon');
+});
 test('escape returns, EOF cancels and a non-terminal produces no ANSI menu', async () => {
   const ui = prompts(); let pending = ui.selectMenu('menu', [{ label: 'exit', value: 'exit' }]);
   ui.key('escape'); assert.equal(await pending, null); assert.equal(ui.stdin.isRaw, false);

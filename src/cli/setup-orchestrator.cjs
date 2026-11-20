@@ -24,7 +24,7 @@ function readConfig({ file = CONFIG_FILE } = {}) {
   if (!fs.existsSync(file)) return null;
   const config = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (!config || !['zh', 'en'].includes(config.lang) || !Array.isArray(config.enabledApps)) throw new Error(`配置格式无效，请检查并保留原文件：${file}`);
-  return { ...config, enabledApps: config.enabledApps.filter(app => ['codex', 'antigravity', 'claude'].includes(app)) };
+  return { ...config, enabledApps: config.enabledApps.filter(app => ['codex', 'antigravity', 'claude', 'deepseek'].includes(app)) };
 }
 
 function writeConfig(data, { file = CONFIG_FILE } = {}) {
@@ -257,7 +257,7 @@ async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'anti
   assertSetupIdle();
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(en ? 'Node.js 22 or newer is required' : '需要 Node.js 22 或更高版本');
   if (process.platform !== 'darwin') throw new Error(en ? 'Currently only macOS is supported' : '目前支持 macOS');
-  if (!['zh', 'en'].includes(lang) || !Array.isArray(enabledApps) || enabledApps.some(app => !['codex', 'antigravity', 'claude'].includes(app))) {
+  if (!['zh', 'en'].includes(lang) || !Array.isArray(enabledApps) || enabledApps.some(app => !['codex', 'antigravity', 'claude', 'deepseek'].includes(app))) {
     throw new Error(en ? 'Please select supported apps and language' : '请选择支持的应用和语言');
   }
   enabledApps = [...new Set(enabledApps)];
@@ -265,6 +265,9 @@ async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'anti
   const runtime = path.join(DATA_DIR, 'runtime');
   const agy = require('../../scripts/setup-antigravity-service.cjs');
   const claude = require('../../scripts/setup-claude-service.cjs');
+  const dshInstaller = require('../harnesses/deepseek/dsh-installer.cjs');
+  const dshStateFile = require('../harnesses/deepseek/dsh-service.cjs').resolveDefaultDshStateFile();
+  const dshWasInstalled = dshInstaller.probeDshRuntime({ home }).pluginInstalled;
   const codexConfig = path.join(home, '.codex/config.toml');
   const agyConfig = path.join(home, '.gemini/antigravity/mcp_config.json');
   const agyUnifiedConfig = path.join(home, '.gemini/config/mcp_config.json');
@@ -275,12 +278,18 @@ async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'anti
   if (enabledApps.includes('antigravity') && fs.existsSync(agyConfig)) JSON.parse(fs.readFileSync(agyConfig, 'utf8'));
   if (enabledApps.includes('antigravity') && fs.existsSync(agyUnifiedConfig)) JSON.parse(fs.readFileSync(agyUnifiedConfig, 'utf8'));
   if (enabledApps.includes('claude') && fs.existsSync(claudeConfig)) JSON.parse(fs.readFileSync(claudeConfig, 'utf8'));
-  for (const file of [path.join(DATA_DIR, 'manual-state.json'), path.join(home, '.gemini/antigravity/session-status/manual-state.json'), require('../harnesses/claude/claude-service.cjs').DEFAULT_STATE_FILE]) {
+  for (const file of [path.join(DATA_DIR, 'manual-state.json'), path.join(home, '.gemini/antigravity/session-status/manual-state.json'), require('../harnesses/claude/claude-service.cjs').DEFAULT_STATE_FILE, dshStateFile]) {
     if (fs.existsSync(file) && JSON.parse(fs.readFileSync(file, 'utf8')).timeline?.some(event => event.status === 'pending')) {
       throw new Error(en ? 'Please wait for the active analysis to finish before modifying components.' : '请等待当前分析结束后再修改组件。');
     }
   }
-  const files = [CONFIG_FILE, codexConfig, agyConfig, agyUnifiedConfig, claudeConfig, PLIST_FILE, agy.PLIST_PATH, claude.PLIST_PATH,
+  const dshProfilesDir = path.join(home, '.dsh', 'profiles');
+  const dshProfilePkgs = fs.existsSync(dshProfilesDir)
+    ? fs.readdirSync(dshProfilesDir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => path.join(dshProfilesDir, entry.name, 'package.json'))
+    : [];
+  const files = [...new Set([CONFIG_FILE, codexConfig, agyConfig, agyUnifiedConfig, claudeConfig, PLIST_FILE, agy.PLIST_PATH, claude.PLIST_PATH,
     path.join(DATA_DIR, 'bridge'), path.join(DATA_DIR, 'autostart.json'),
     path.join(home, '.codex/skills/agent-things/SKILL.md'),
     path.join(home, '.codex/skills/agent-things-card/SKILL.md'),
@@ -291,7 +300,9 @@ async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'anti
     path.join(home, '.gemini/config/skills/things/checklist.md'),
     path.join(home, '.gemini/config/hooks.json'),
     path.join(home, '.gemini/config/agents/agent-things-analysis/agent.md'),
-    path.join(home, '.claude/skills/agent-things/SKILL.md')];
+    path.join(home, '.claude/skills/agent-things/SKILL.md'),
+    ...dshProfilePkgs,
+    path.join(dshProfilesDir, 'web', 'package.json')])];
   const saved = new Map(files.map(file => [file, fs.existsSync(file) ? fs.readFileSync(file) : null]));
   const running = [LABEL, 'com.antigravity.session-status', claude.LABEL].filter(label => launchd.printJob(label));
   const hadRuntime = fs.existsSync(runtime);
@@ -327,6 +338,16 @@ async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'anti
       await claude.install({ root: runtime });
       installClaudeMcp({ scriptPath: path.join(runtime, 'bin/claude-session-status.cjs') });
     } else disableClaudeMcp();
+    if (enabledApps.includes('deepseek')) {
+      let bundleDir = path.join(runtime, 'packages/dsh-agent-things');
+      if (!fs.existsSync(bundleDir)) {
+        require('../../scripts/build-dsh-bundle.cjs').buildBundle();
+        bundleDir = path.join(root, 'packages/dsh-agent-things');
+      }
+      dshInstaller.installDshPlugin({ bundleDir, home });
+    } else if (dshWasInstalled) {
+      dshInstaller.uninstallDshPlugin({ home });
+    }
     inlineChange = syncSkillFiles(enabledApps, { homeDirectory: home, lang });
     await verify({ enabledApps, runtime });
     let commitResult = null;
@@ -379,7 +400,12 @@ async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'anti
     // 2. 未提交阶段（提交前失败）：执行原有的安全回滚逻辑
     inlineChange?.rollback();
     try {
-      if (servicesTouched) { await launchd.bootout(LABEL); await agy.uninstall(); await claude.uninstall(); }
+      if (servicesTouched) {
+        await launchd.bootout(LABEL); await agy.uninstall(); await claude.uninstall();
+        if (enabledApps.includes('deepseek') && !dshWasInstalled) {
+          try { dshInstaller.uninstallDshPlugin({ home }); } catch {}
+        }
+      }
       // 物理目录恢复 100% 统一由事务模块按本次登记目标负责，绝不在此手动删除任何未登记目录
       if (runtimeChanged) {
         recoverPendingTransaction(DATA_DIR);
@@ -411,6 +437,7 @@ async function uninstallAllUnlocked() {
     disableCodexMcp({});
     disableAntigravityMcp({ homeDirectory: home });
     disableClaudeMcp();
+    try { require('../harnesses/deepseek/dsh-installer.cjs').uninstallDshPlugin({ home }); } catch {}
     const agyPluginDir = path.join(home, '.gemini/config/plugins/things');
     if (fs.existsSync(agyPluginDir)) {
       const ownership = verifyPluginOwnership(agyPluginDir, DATA_DIR, { action: 'uninstall' });

@@ -48,6 +48,10 @@ test('browser and Mods use the same generated presentation and progress rules', 
     assert.equal(doneBanner.completed, true);
     assert.equal(doneBanner.label, '已升级至 v1.3.3');
     assert.equal(doneBanner.detail, expected.strings.reconnectMcpHint);
+    const unsupportedBanner = target.updateBannerState({ currentVersion: '1.3.3', available: false, unsupported: true }, expected.strings, { manualCheckStatus: 'latest' });
+    assert.equal(unsupportedBanner.showCheckButton, false);
+    assert.equal(unsupportedBanner.checkDisabled, true);
+    assert.equal(unsupportedBanner.versionText, 'v1.3.3');
   }
   assert.ok(file.includes(createPresentation.toString()), 'Generated Mods module must match the shared source');
 });

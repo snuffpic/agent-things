@@ -10,12 +10,32 @@ try {
   const [pack] = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', temp], { cwd: root, encoding: 'utf8' }));
   const names = new Set(pack.files.map(file => file.path));
   for (const name of names) assert.ok(!name.startsWith('docs/') && !/\.bak(?:_|$)/.test(name) && name !== 'MANUAL-STATUS.md', `Unexpected local material: ${name}`);
-  for (const name of ['skills/things/SKILL.md', 'skills/agent-things/SKILL.md', 'src/ui-foundation.cjs', 'mods/agent-things-ui/hooks/foundation.js', 'src/plugins/things/plugin.json', 'src/plugins/things/sidecars/things_board/index.html']) assert.ok(names.has(name), `Missing runtime file: ${name}`);
+  for (const name of [
+    'skills/things/SKILL.md',
+    'skills/agent-things/SKILL.md',
+    'src/ui-foundation.cjs',
+    'mods/agent-things-ui/hooks/foundation.js',
+    'src/plugins/things/plugin.json',
+    'src/plugins/things/sidecars/things_board/index.html',
+    'packages/dsh-agent-things/package.json',
+    'packages/dsh-agent-things/README.md',
+    'packages/dsh-agent-things/icon.svg',
+    'packages/dsh-agent-things/cordis.patch.yml',
+    'packages/dsh-agent-things/locale/en.json',
+    'packages/dsh-agent-things/locale/zh.json',
+    'packages/dsh-agent-things/docs/DETAIL.md',
+    'packages/dsh-agent-things/docs/DETAIL.zh.md',
+    'packages/dsh-agent-things/lib/index.js',
+    'packages/dsh-agent-things/lib/client.js',
+    'packages/dsh-agent-things/bin/dsh-mcp.cjs',
+  ]) assert.ok(names.has(name), `Missing runtime file: ${name}`);
   execFileSync('tar', ['-xzf', path.join(temp, pack.filename), '-C', temp]);
   const unpacked = path.join(temp, 'package');
   const pkg = JSON.parse(fs.readFileSync(path.join(unpacked, 'package.json'), 'utf8'));
   assert.equal(pkg.name, 'agent-things');
   assert.ok(!pkg.private);
+  const dshBundlePkg = JSON.parse(fs.readFileSync(path.join(unpacked, 'packages/dsh-agent-things/package.json'), 'utf8'));
+  assert.equal(dshBundlePkg.version, pkg.version, 'DSH bundle version must match root package.json');
   for (const name of ['native/bin/bridge', 'native/bin/bridge.json', 'src/native-bridge.cjs']) assert.ok(names.has(name), `Missing native startup component: ${name}`);
   const bridge = require(path.join(unpacked, 'src/native-bridge.cjs')).verifyBridgeBundle(unpacked);
   execFileSync('/usr/bin/lipo', [bridge, '-verify_arch', 'arm64', 'x86_64'], { stdio: 'pipe' });

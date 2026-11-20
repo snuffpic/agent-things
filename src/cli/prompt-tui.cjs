@@ -20,6 +20,9 @@ const RESET = '\x1b[0m';
 function getProbeIcon(item) {
   if (!item.installed) return `${GRAY}✖${RESET}`;
   if (item.id === 'codex' && item.running && !item.portActive) return `${YELLOW}!${RESET}`;
+  if (item.id === 'deepseek' && (item.nodeCompatible === false || (Array.isArray(item.brokenPluginProfiles) && item.brokenPluginProfiles.length > 0 && !(item.healthyPluginProfiles?.length)))) {
+    return `${YELLOW}!${RESET}`;
+  }
   return `${GREEN}✔${RESET}`;
 }
 
@@ -68,10 +71,10 @@ async function selectLanguageWithProbe(env, defaultLang = detectSystemLang()) {
     lines.push(`  ${GRAY}─────────────────────────────────────────────────────────────${RESET}`);
     lines.push(`  ${DIM}${isZh ? '🔍 本机环境探测预览 (随语言联动):' : '🔍 Local Environment Preview (Synced with language):'}${RESET}`);
 
-    const targets = [env.codex, env.antigravity, env.claude, env.agy].filter(Boolean);
+    const targets = [env.codex, env.antigravity, env.claude, env.deepseek, env.agy].filter(Boolean);
     for (const item of targets) {
       const icon = getProbeIcon(item);
-      const name = item.name.padEnd(18, ' ');
+      const name = String(item.name || item.id || '').padEnd(18, ' ');
       const desc = formatProbeText(item, currentLang);
       lines.push(`   ${icon} ${name} ${GRAY}${desc}${RESET}`);
     }
@@ -161,6 +164,13 @@ async function selectApps(env, lang = 'zh', enabledApps = null) {
       id: 'claude', name: 'Claude Desktop · Code', installed: env.claude?.installed ?? false,
       detail: formatProbeText(env.claude, lang),
       selected: Boolean(env.claude?.installed && (enabledApps === null || enabledApps.includes('claude'))),
+    },
+    {
+      id: 'deepseek',
+      name: 'DeepSeek Harness',
+      installed: env.deepseek?.installed ?? false,
+      detail: formatProbeText(env.deepseek, lang),
+      selected: Boolean(env.deepseek?.installed && (enabledApps === null || enabledApps.includes('deepseek'))),
     },
   ];
 

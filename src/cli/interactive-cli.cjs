@@ -144,7 +144,77 @@ async function showHealthStatus(lang) {
       : `  Enabled: ${Boolean(config?.enabledApps.includes('claude'))}; service: ${healthy}; sidebar extension: ${labels[attachment?.state] || attachment?.state || 'waiting'}`);
   }
   if (config?.enabledApps.includes('claude') && fs.existsSync(path.join(os.homedir(), '.claude/skills/agent-things-ui/.claude-plugin/plugin.json'))) console.log(zh ? 'Claude 会话卡片：已安装，使用 /things。' : 'Claude conversation card: installed, run /things.');
+  if (env.deepseek?.installed || config?.enabledApps.includes('deepseek')) {
+    showDeepSeekDiagnosis(env.deepseek, Boolean(config?.enabledApps.includes('deepseek')), zh);
+  }
   console.log(zh ? 'MCP宿主连接状态请在客户端确认；注册配置与实际连接分别判断。\n' : 'Confirm MCP host connection in the client; configuration and connection are separate checks.\n');
+}
+
+function showDeepSeekDiagnosis(deepseek, enabled, zh) {
+  const home = os.homedir();
+  const shortPath = target => (typeof target === 'string' && target ? target.replace(home, '~') : '');
+  const lang = zh ? 'zh' : 'en';
+  const nodeVer = deepseek?.nodeVersion;
+  const nodeDesc = !nodeVer
+    ? (zh ? '未检测到' : 'not detected')
+    : `${nodeVer} (${deepseek.nodeCompatible === false ? (zh ? '不兼容，需 >= 24.9' : 'incompatible, needs >= 24.9') : (zh ? '兼容' : 'compatible')})`;
+
+  const links = Array.isArray(deepseek?.profileLinks) ? deepseek.profileLinks : [];
+  let mountDesc;
+  if (links.length) {
+    mountDesc = links.map(item => {
+      if (item.valid) return item.version ? `${item.profile} (v${item.version})` : item.profile;
+      const errMap = zh
+        ? { 'not-in-bundles': '未加入 bundles', 'missing-link': '缺少 link 路径', 'missing-target': '链接目标不存在', 'missing-files': '产物缺失', 'missing-package': '未安装包' }
+        : { 'not-in-bundles': 'missing from bundles', 'missing-link': 'missing link', 'missing-target': 'missing target', 'missing-files': 'missing files', 'missing-package': 'package missing' };
+      return `${item.profile} (${errMap[item.error] || (zh ? '链接异常' : 'broken')})`;
+    }).join(', ');
+  } else if (Array.isArray(deepseek?.pluginProfiles) && deepseek.pluginProfiles.length) {
+    mountDesc = deepseek.pluginProfiles.join(', ');
+  } else {
+    mountDesc = zh ? '未挂载' : 'not linked';
+  }
+
+  const bridge = deepseek?.bridge;
+  let bridgeDesc;
+  if (bridge?.reachable) {
+    bridgeDesc = zh ? `运行中 (127.0.0.1:${bridge.port})` : `running (127.0.0.1:${bridge.port})`;
+  } else if (bridge?.configured) {
+    bridgeDesc = zh ? '已配置但当前未运行（启动 dsh --profile web 后激活）' : 'configured, inactive (start dsh --profile web)';
+  } else {
+    bridgeDesc = zh ? '未启动（启动 dsh --profile web 后激活）' : 'inactive (start dsh --profile web)';
+  }
+
+  const cfg = deepseek?.analysisConfig;
+  const modelDesc = cfg?.mode === 'custom' && cfg?.model
+    ? `${cfg.provider ? `${cfg.provider}/` : ''}${cfg.model}${cfg.reasoningEffort ? ` · ${cfg.reasoningEffort}` : ''}`
+    : (zh ? `自动选择 · 4.1 Flash${cfg?.reasoningEffort ? ` · ${cfg.reasoningEffort}` : ' · Low'}` : `Auto · 4.1 Flash${cfg?.reasoningEffort ? ` · ${cfg.reasoningEffort}` : ' · Low'}`);
+  const marked = Number.isInteger(deepseek?.markedSessions) ? deepseek.markedSessions : 0;
+
+  console.log(`DeepSeek Harness: ${formatProbeText(deepseek, lang)}`);
+  console.log(zh
+    ? `  启用: ${enabled ? '是' : '否'}；Node: ${nodeDesc}；Bundle 挂载: ${mountDesc}；命令: /things`
+    : `  Enabled: ${enabled}; Node: ${nodeDesc}; bundle linked: ${mountDesc}; command: /things`);
+  console.log(zh
+    ? `  Web 桥接: ${bridgeDesc}；解析模型: ${modelDesc}；已记录会话: ${marked}`
+    : `  Web bridge: ${bridgeDesc}; analysis model: ${modelDesc}; marked sessions: ${marked}`);
+
+  const validTargets = links.filter(item => item.valid && item.linkPath).map(item => `${item.profile} -> ${shortPath(item.linkPath)}`);
+  let diagnosis = '';
+  if (!deepseek?.installed) {
+    diagnosis = zh ? '未检测到 dsh 命令。请先安装 @deepseek-ai/dsh（需 Node >= 24.9）。' : 'dsh CLI not detected. Install @deepseek-ai/dsh (requires Node >= 24.9) first.';
+  } else if (deepseek.nodeCompatible === false) {
+    diagnosis = zh ? `当前 dsh 配套 Node（${nodeVer || '未知'}）低于 24.9，请切换到 Node >= 24.9 环境。` : `Associated Node (${nodeVer || 'unknown'}) is below 24.9; switch to Node >= 24.9.`;
+  } else if (Array.isArray(deepseek.brokenPluginProfiles) && deepseek.brokenPluginProfiles.length > 0) {
+    diagnosis = zh ? `检测到失效挂载（${deepseek.brokenPluginProfiles.join(', ')}），请在管理菜单执行「同步组件与技能」修复。` : `Broken bundle link detected (${deepseek.brokenPluginProfiles.join(', ')}); run Sync components and skills in the management menu.`;
+  } else if (enabled && !links.some(item => item.valid) && !(Array.isArray(deepseek.pluginProfiles) && deepseek.pluginProfiles.length)) {
+    diagnosis = zh ? '已启用 DeepSeek Harness，但尚未挂载到 dsh profile。请在管理菜单执行「同步组件与技能」。' : 'DeepSeek Harness is enabled but not linked to a dsh profile. Run Sync components and skills in the management menu.';
+  } else if (validTargets.length) {
+    diagnosis = zh ? `挂载有效（${validTargets.join('; ')}）。` : `Healthy link (${validTargets.join('; ')}).`;
+  }
+  if (diagnosis) {
+    console.log(`  ${zh ? '诊断' : 'Diagnosis'}: ${diagnosis}`);
+  }
 }
 
 function completed(apps, zh) {
@@ -155,18 +225,21 @@ function completed(apps, zh) {
   if (apps.includes('claude')) console.log(zh
     ? 'Claude Code：新会话会加载会话卡片；已有会话输入 /reload-plugins，再用 /things 打开。侧栏圆环可在开发者菜单手动开启 Enable Main Process Debugger 后挂载。'
     : 'Claude Code: new sessions load the card; run /reload-plugins in existing sessions, then /things. For sidebar rings, manually enable Developer → Enable Main Process Debugger.');
+  if (apps.includes('deepseek')) console.log(zh
+    ? 'DeepSeek Harness：运行 dsh --profile web 打开 Web UI，侧栏圆环、右侧 Things 面板、/things 命令及插件页「任务解析模型」配置均已就绪。'
+    : 'DeepSeek Harness: run dsh --profile web to open Web UI; sidebar rings, Things right pane, /things, and Plugin Manager model settings are ready.');
 }
 
 async function runInteractiveCli(options = {}) {
   let config = readConfig();
   if (options.all || options.yes) {
     const env = await probeEnvironment();
-    const apps = [env.codex, env.antigravity, env.claude].filter(app => app?.installed).map(app => app.id);
+    const apps = [env.codex, env.antigravity, env.claude, env.deepseek].filter(app => app?.installed).map(app => app.id);
     const lang = options.lang || config?.lang || detectSystemLang();
     if (!apps.length) {
       throw new Error(lang === 'en'
-        ? 'No supported applications detected. Install ChatGPT.app, Antigravity.app, or Claude.app first.'
-        : '未检测到支持的应用，请先安装 ChatGPT.app、Antigravity.app 或 Claude.app。');
+        ? 'No supported applications detected. Install ChatGPT.app, Antigravity.app, Claude.app, or DeepSeek Harness first.'
+        : '未检测到支持的应用，请先安装 ChatGPT.app、Antigravity.app、Claude.app 或 DeepSeek Harness。');
     }
     await executeSetup({ lang, enabledApps: apps, autoRestartCodex: false, verify: verifyServices });
     completed(apps, lang === 'zh');

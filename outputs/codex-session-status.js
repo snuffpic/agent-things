@@ -674,12 +674,13 @@ function createPresentation(lang) {
         ? `${update?.error || ''}\n${textDict.terminalUpgradePrefix || ''}${command}`
         : (completed && update?.reconnectMcp ? (textDict.reconnectMcpHint || '') : '');
     const currentVersion = info?.currentVersion || '';
-    const checkFailed = !visible && options.manualCheckStatus === 'failed';
+    const unsupported = Boolean(info?.unsupported);
+    const checkFailed = !visible && !unsupported && options.manualCheckStatus === 'failed';
     let versionText = currentVersion ? fmtText(textDict.versionTagPattern || 'v{version}', { version: currentVersion }) : '';
     if (checkFailed) {
       const errText = options.checkError || info?.checkError || '';
       versionText = errText ? `${textDict.checkUpdateFailedLabel || 'Update check failed'}: ${errText}` : (textDict.checkUpdateFailedLabel || 'Update check failed');
-    } else if (!visible && options.manualCheckStatus === 'latest' && currentVersion) {
+    } else if (!visible && !unsupported && options.manualCheckStatus === 'latest' && currentVersion) {
       versionText = fmtText(textDict.alreadyLatestPattern || 'Up to date (v{version})', { version: currentVersion });
     }
     const checking = Boolean(options.checking);
@@ -695,8 +696,9 @@ function createPresentation(lang) {
       currentVersion,
       versionText,
       showVersionBar: !visible,
+      showCheckButton: !unsupported,
       checking,
-      checkDisabled: checking,
+      checkDisabled: checking || unsupported,
       checkFailed,
       checkButtonText: checking ? (textDict.checkingUpdateShort || 'Checking...') : (textDict.checkUpdateBtn || 'Check updates'),
     };
@@ -1688,12 +1690,13 @@ function installCodexSessionStatus(version, restored, embedded) {
               buttonText: active ? S('pleaseWait') : completed ? S('completedShort') : failed ? S('retryBtn') : S('upgradeBtn'),
               detail: options.connectionError ? `${S('reconnectHint')}\n${S('terminalUpgradePrefix')}${command}`
                 : failed ? `${update?.error || ''}\n${S('terminalUpgradePrefix')}${command}` : completed && update?.reconnectMcp ? S('reconnectMcpHint') : '',
-              versionText: options.manualCheckStatus === 'failed'
+              versionText: options.manualCheckStatus === 'failed' && !info?.unsupported
                 ? `${S('checkUpdateFailedLabel')}${options.checkError ? `: ${options.checkError}` : ''}`
-                : (options.manualCheckStatus === 'latest' && info?.currentVersion ? S('alreadyLatestPattern', { version: info.currentVersion }) : (info?.currentVersion ? `v${info.currentVersion}` : '')),
+                : (options.manualCheckStatus === 'latest' && !info?.unsupported && info?.currentVersion ? S('alreadyLatestPattern', { version: info.currentVersion }) : (info?.currentVersion ? `v${info.currentVersion}` : '')),
               showVersionBar: !visible,
-              checkDisabled: Boolean(options.checking),
-              checkFailed: !visible && options.manualCheckStatus === 'failed',
+              showCheckButton: !info?.unsupported,
+              checkDisabled: Boolean(options.checking || info?.unsupported),
+              checkFailed: !visible && !info?.unsupported && options.manualCheckStatus === 'failed',
               checkButtonText: options.checking ? S('checkingUpdateShort') : S('checkUpdateBtn'),
             };
           })();
@@ -1707,6 +1710,7 @@ function installCodexSessionStatus(version, restored, embedded) {
       versionBar.hidden = !(banner.showVersionBar && (info || banner.checking || banner.checkFailed));
       versionBar.setAttribute('data-failed', String(banner.checkFailed));
       versionBarText.textContent = banner.versionText;
+      checkUpdateButton.hidden = banner.showCheckButton === false || Boolean(info?.unsupported);
       checkUpdateButton.textContent = banner.checkButtonText;
       checkUpdateButton.disabled = banner.checkDisabled;
       refreshPanel();
@@ -1747,7 +1751,7 @@ function installCodexSessionStatus(version, restored, embedded) {
         if (info?.checkError && !info?.available) {
           target.manualCheckStatus = 'failed';
           target.manualCheckError = info.checkError;
-        } else if (!info?.available) {
+        } else if (!info?.available && !info?.unsupported) {
           target.manualCheckStatus = 'latest';
           target.manualCheckTimer = setTimeout(() => {
             if (panel !== target || target.manualCheckStatus !== 'latest') return;

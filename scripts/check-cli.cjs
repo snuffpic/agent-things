@@ -13,7 +13,7 @@ function run(args,expected=0,bin=cli){
  return r;
 }
 try{
- for(const args of [['help'],['--help'],['-h'],['setup','--help'],['run','--help'],['mcp','--help'],['status','--help']])run(args);
+ for(const args of [['help'],['--help'],['-h'],['setup','--help'],['doctor','--help'],['run','--help'],['mcp','--help'],['status','--help']])run(args);
  for(const args of [['status','--all'],['--help','-y'],['setup','--unknown'],['run','--port','invalid'],['run','--data-dir'],['unknown'],[]])run(args,1);
  const yes=run(['--yes'],1);assert.ok(!yes.stderr.includes('未知命令'));
  const codexHome=path.join(home,'.codex');fs.mkdirSync(codexHome,{recursive:true});const config=path.join(codexHome,'config.toml');

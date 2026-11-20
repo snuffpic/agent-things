@@ -9,11 +9,15 @@ test('probeEnvironment returns structured targets with expected properties', asy
   assert.ok(env.antigravity, 'env.antigravity should exist');
   assert.ok(env.agy, 'env.agy should exist');
   assert.ok(env.claude, 'env.claude should exist');
+  assert.ok(env.deepseek, 'env.deepseek should exist');
 
   assert.equal(typeof env.codex.installed, 'boolean');
   assert.equal(typeof env.antigravity.installed, 'boolean');
   assert.equal(typeof env.agy.installed, 'boolean');
   assert.equal(typeof env.claude.installed, 'boolean');
+  assert.equal(typeof env.deepseek.installed, 'boolean');
+  assert.ok(Array.isArray(env.deepseek.profileLinks));
+  assert.equal(typeof env.deepseek.markedSessions, 'number');
 });
 
 test('formatProbeText handles zh and en languages gracefully', () => {
@@ -29,6 +33,18 @@ test('formatProbeText handles zh and en languages gracefully', () => {
   const fakeCodexRunningNoPort = { id: 'codex', name: 'Codex', installed: true, running: true, portActive: false };
   assert.match(formatProbeText(fakeCodexRunningNoPort, 'zh'), /需重启/);
   assert.match(formatProbeText(fakeCodexRunningNoPort, 'en'), /restart needed/);
+
+  const dshBadNode = { id: 'deepseek', name: 'DeepSeek Harness', installed: true, nodeVersion: 'v22.14.0', nodeCompatible: false };
+  assert.match(formatProbeText(dshBadNode, 'zh'), /Node >= 24\.9.*v22\.14\.0/);
+  assert.match(formatProbeText(dshBadNode, 'en'), /Needs Node >= 24\.9.*v22\.14\.0/);
+
+  const dshBrokenLink = { id: 'deepseek', name: 'DeepSeek Harness', installed: true, nodeCompatible: true, brokenPluginProfiles: ['web'], healthyPluginProfiles: [] };
+  assert.match(formatProbeText(dshBrokenLink, 'zh'), /插件链接异常.*web/);
+  assert.match(formatProbeText(dshBrokenLink, 'en'), /Broken plugin link.*web/);
+
+  const dshLive = { id: 'deepseek', name: 'DeepSeek Harness', installed: true, nodeCompatible: true, profiles: ['web'], bridge: { reachable: true, port: 61234 } };
+  assert.match(formatProbeText(dshLive, 'zh'), /运行中.*web.*:61234/);
+  assert.match(formatProbeText(dshLive, 'en'), /Running.*web.*:61234/);
 });
 
 test('running host detection reads executable images rather than full process arguments', () => {

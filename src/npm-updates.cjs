@@ -140,7 +140,10 @@ function assertSetupIdle() {
 }
 
 function pendingAnalysis() {
-  const files = [path.join(DATA_DIR, 'manual-state.json'), path.join(os.homedir(), '.gemini/antigravity/session-status/manual-state.json'), path.join(os.homedir(), 'Library/Application Support/AgentThings/claude/manual-state.json')];
+  const dshState = process.platform === 'darwin'
+    ? path.join(os.homedir(), 'Library/Application Support/AgentThings/deepseek/manual-state.json')
+    : path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'agent-things/manual-state.json');
+  const files = [path.join(DATA_DIR, 'manual-state.json'), path.join(os.homedir(), '.gemini/antigravity/session-status/manual-state.json'), path.join(os.homedir(), 'Library/Application Support/AgentThings/claude/manual-state.json'), dshState];
   return files.some(file => fs.existsSync(file) && JSON.parse(fs.readFileSync(file, 'utf8')).timeline?.some(event => event.status === 'pending'));
 }
 
@@ -150,6 +153,16 @@ async function verifyServices({ enabledApps, runtime }) {
   do {
     try {
       for (const app of enabledApps) {
+        if (app === 'deepseek') {
+          const dshHost = path.join(runtime, 'packages/dsh-agent-things/lib/index.js');
+          const dshClient = path.join(runtime, 'packages/dsh-agent-things/lib/client.js');
+          if (!fs.existsSync(dshHost) || !fs.existsSync(dshClient)) throw new Error(msg('DeepSeek Harness 插件包未就绪', 'DeepSeek Harness plugin bundle is missing'));
+          const { probeDshRuntime } = require(path.join(__dirname, 'harnesses/deepseek/dsh-installer.cjs'));
+          const dshProbe = probeDshRuntime();
+          const hasHealthy = Array.isArray(dshProbe.healthyPluginProfiles) ? dshProbe.healthyPluginProfiles.length > 0 : dshProbe.pluginInstalled;
+          if (!hasHealthy) throw new Error(msg('DeepSeek Harness 插件未挂载或链接失效', 'DeepSeek Harness plugin is missing or has a broken link'));
+          continue;
+        }
         const label = { codex: 'com.codexsessionstatus.agent', antigravity: 'com.antigravity.session-status', claude: 'com.agentthings.claude' }[app];
         if (!/\bpid = [1-9]\d*/.test(launchd.printJob(label) || '')) throw new Error(msg(`${app} 后台服务未启动`, `${app} background service is not running`));
         if (app === 'codex') await requestProgressHttp(path.join(DATA_DIR, 'manual-state.json'), '/health');

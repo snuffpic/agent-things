@@ -573,12 +573,13 @@ function createPresentation(lang) {
         ? `${update?.error || ''}\n${textDict.terminalUpgradePrefix || ''}${command}`
         : (completed && update?.reconnectMcp ? (textDict.reconnectMcpHint || '') : '');
     const currentVersion = info?.currentVersion || '';
-    const checkFailed = !visible && options.manualCheckStatus === 'failed';
+    const unsupported = Boolean(info?.unsupported);
+    const checkFailed = !visible && !unsupported && options.manualCheckStatus === 'failed';
     let versionText = currentVersion ? fmtText(textDict.versionTagPattern || 'v{version}', { version: currentVersion }) : '';
     if (checkFailed) {
       const errText = options.checkError || info?.checkError || '';
       versionText = errText ? `${textDict.checkUpdateFailedLabel || 'Update check failed'}: ${errText}` : (textDict.checkUpdateFailedLabel || 'Update check failed');
-    } else if (!visible && options.manualCheckStatus === 'latest' && currentVersion) {
+    } else if (!visible && !unsupported && options.manualCheckStatus === 'latest' && currentVersion) {
       versionText = fmtText(textDict.alreadyLatestPattern || 'Up to date (v{version})', { version: currentVersion });
     }
     const checking = Boolean(options.checking);
@@ -594,8 +595,9 @@ function createPresentation(lang) {
       currentVersion,
       versionText,
       showVersionBar: !visible,
+      showCheckButton: !unsupported,
       checking,
-      checkDisabled: checking,
+      checkDisabled: checking || unsupported,
       checkFailed,
       checkButtonText: checking ? (textDict.checkingUpdateShort || 'Checking...') : (textDict.checkUpdateBtn || 'Check updates'),
     };

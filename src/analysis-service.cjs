@@ -15,10 +15,11 @@ const { readConfiguredLang } = require('./i18n.cjs');
 const versions = { prompt: '5', schema: '5', ledger: '3' };
 class AnalysisService {
   constructor({ store, onChange = () => {}, makeServer, run,
+    inspectGitFn = null,
     resources = path.join(__dirname, 'analysis-assets'), logFile = path.join(path.dirname(store.file), 'analysis.jsonl'),
     maxBytes = FULL_PASS_MAX_BYTES, tokenBudget = FULL_PASS_TOKEN_BUDGET, lang = null }) {
     if (typeof makeServer !== 'function' || typeof run !== 'function') throw new TypeError('分析服务需要会话源和模型执行器');
-    Object.assign(this, { store, onChange, makeServer, run, resources, maxBytes, tokenBudget, lang });
+    Object.assign(this, { store, onChange, makeServer, run, inspectGitFn, resources, maxBytes, tokenBudget, lang });
     this.log = createAnalysisLog(logFile);
     this.active = new Map();
     this.stopped = false;
@@ -83,7 +84,7 @@ class AnalysisService {
       }
       this.store.updateAnalysis(key, sequence, { boundary: captured.boundary, boundaryAttempt: attempt, stats: { turnCount: captured.boundary?.turnCount ?? 0, rawBytes: captured.extracted.stats.rawBytes, compactBytes: captured.extracted.stats.compactBytes } }); this.onChange(key, { status: 'pending', stage: 'reading' });
       const extracted = captured.extracted;
-      const projectGit = await readProjectGit(server.request.bind(server), threadId);
+      const projectGit = await readProjectGit(server.request.bind(server), threadId, this.inspectGitFn || undefined);
       job.log('project.git', { reason: projectGit.status, hasRemote: projectGit.hasRemote });
       const lang = this.activeLang();
       const activeVersions = lang === 'en'

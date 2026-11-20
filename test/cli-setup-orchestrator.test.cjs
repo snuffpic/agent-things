@@ -10,11 +10,11 @@ test('writeConfig and readConfig roundtrip properly', t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'status-config-test-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'config.json');
-  const sample = { lang: 'zh', enabledApps: ['codex', 'antigravity'], updatedAt: '2026-11-05T00:00:00.000Z' };
+  const sample = { lang: 'zh', enabledApps: ['codex', 'antigravity', 'claude', 'deepseek'], updatedAt: '2026-11-05T00:00:00.000Z' };
   writeConfig(sample, { file });
   const read = readConfig({ file });
   assert.equal(read.lang, 'zh');
-  assert.deepEqual(read.enabledApps, ['codex', 'antigravity']);
+  assert.deepEqual(read.enabledApps, ['codex', 'antigravity', 'claude', 'deepseek']);
 });
 
 test('syncSkillFiles writes skill to enabled apps including antigravity /things', t => {

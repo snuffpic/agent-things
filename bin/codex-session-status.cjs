@@ -102,29 +102,33 @@ async function main() {
   if (command === 'help' || command === '--help' || command === '-h') {
     if (en) {
       console.log('Usage: agent-things [command] [options]\n');
-      console.log('Run with no arguments: launch interactive wizard (environment probe, language toggle, app selection, background daemon)\n');
+      console.log('Run with no arguments: launch interactive wizard for ChatGPT, Antigravity, Claude Desktop, and DeepSeek Harness\n');
       console.log('Core commands:');
-      console.log('  setup         Interactive setup & management; --yes/--all auto-configures detected apps; --lang zh|en');
-      console.log('  doctor        Inspect client, daemon, and mounting diagnostics');
+      console.log('  setup         Interactive setup & management across all four clients; --yes/--all auto-configures detected apps; --lang zh|en');
+      console.log('  doctor        Inspect client availability (including DeepSeek Harness), background daemons, and mounting health');
+      console.log('  help          Show this command reference (--help / -h)');
+      console.log('\nAdvanced commands (ChatGPT / Codex only):');
       console.log('  run           Run foreground debug mode on port 39222 and attach UI (Ctrl+C to exit)');
-      console.log('  status        Print recorded session progress snapshot (JSON)');
-      console.log('  mcp           Run as native companion MCP server (JSON-RPC stdio)');
+      console.log('  status        Print recorded Codex session progress snapshot (JSON)');
+      console.log('  mcp           Run Codex native companion MCP server (JSON-RPC stdio)');
       console.log('  install-mcp   Register this server in ~/.codex/config.toml as a native companion MCP server');
       console.log('  disable-mcp   Remove this companion MCP server from ~/.codex/config.toml');
-      console.log('  update-renderer / install-autostart / disable-autostart: advanced renderer updates & Codex autostart management');
+      console.log('  update-renderer / install-autostart / disable-autostart: Codex renderer updates & launchd autostart management');
       console.log('  run/status/mcp support --port; run/status/mcp/update-renderer/install-autostart support --data-dir; run supports --watch-startup');
     } else {
       console.log('用法：agent-things [command] [options]\n');
-      console.log('无参数直接运行：启动交互式向导（环境探测、中英切换、App 多选、后台无感常驻）\n');
+      console.log('无参数直接运行：启动四端交互式向导（支持 ChatGPT、Antigravity、Claude Desktop、DeepSeek Harness）\n');
       console.log('核心命令：');
-      console.log('  setup         交互式安装与管理；--yes/--all 自动配置已安装的支持应用；--lang zh|en');
-      console.log('  doctor        查看客户端、后台和挂载诊断');
+      console.log('  setup         四端交互式安装与管理；--yes/--all 自动配置已检测的应用；--lang zh|en');
+      console.log('  doctor        查看全部客户端（含 DeepSeek Harness）、后台服务与挂载诊断');
+      console.log('  help          显示命令帮助（--help / -h）');
+      console.log('\n高级命令（仅作用于 ChatGPT / Codex）：');
       console.log('  run           前台运行调试模式，连接 39222 端口并挂载 UI (按 Ctrl+C 退出)');
-      console.log('  status        查看已记录会话进度快照 (JSON)');
-      console.log('  mcp           作为原生 MCP 伴生服务运行 (JSON-RPC stdio)');
+      console.log('  status        输出已记录 Codex 会话进度快照 (JSON)');
+      console.log('  mcp           作为 Codex 原生 MCP 伴生服务运行 (JSON-RPC stdio)');
       console.log('  install-mcp   将本服务写入 ~/.codex/config.toml 中作为原生伴生 MCP 服务');
       console.log('  disable-mcp   从 ~/.codex/config.toml 中移除伴生 MCP 服务');
-      console.log('  update-renderer / install-autostart / disable-autostart：高级面板更新与Codex后台管理');
+      console.log('  update-renderer / install-autostart / disable-autostart：Codex 面板更新与后台开机挂载管理');
       console.log('  run/status/mcp 支持 --port；run/status/mcp/update-renderer/install-autostart 支持 --data-dir；run 支持 --watch-startup');
     }
     return;

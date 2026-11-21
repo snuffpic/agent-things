@@ -60,8 +60,8 @@ Agent Things 是 macOS 上的 AI 编程会话进度插件，支持 **ChatGPT**�
 
 | 客户端                        | 显示位置                             | 首次使用需要做的事                                                               |
 | -------------------------- | -------------------------------- | ----------------------------------------------------------------------- |
-| ChatGPT                    | 会话列表进度圆环、状态面板、`/things`          | 无。从 Dock 正常打开即可，见下方“为什么 ChatGPT 会重新打开一次”                                  |
-| Antigravity                | 会话列表进度圆环、侧边 Things 面板、`/things`  | 无                                                                       |
+| ChatGPT                    | 会话列表进度圆环、状态面板、`/things`          | 无。从 Dock 正常打开即可，见下方“为什么 ChatGPT 或 Antigravity 会重新打开一次”                        |
+| Antigravity                | 会话列表进度圆环、侧边 Things 面板、`/things`  | 无。从 Dock 正常打开即可，见下方“为什么 ChatGPT 或 Antigravity 会重新打开一次”                        |
 | Claude Desktop（本地 Code 会话） | 消息流中的 `/things` 卡片；会话列表进度圆环需手动开启 | 安装后执行 `/reload-plugins`；如需会话列表圆环，开启「开发者 → Enable Main Process Debugger」 |
 | DeepSeek Harness（`dsh`）    | 会话列表进度圆环、右侧 `things` 面板、`/things`、插件详情页模型配置 | 需 Node.js 24.9 及以上；运行 `dsh --profile web` 启动                            |
 
@@ -132,13 +132,13 @@ npx agent-things setup --yes
 
 运行 `npx agent-things`，在管理菜单中选择「切换界面与分析语言」。切换会重新安装已启用客户端的技能，界面随之切换；之后在客户端中重新连接 MCP 服务，助手看到的工具说明也会换成新语言。已有任务在下一次「更新进度」时改写为新语言，备注保持原样。
 
-**为什么 ChatGPT 打开后窗口会关掉再重新打开一次？**
+**为什么 ChatGPT 或 Antigravity 打开后窗口会关掉再重新打开一次？**
 
-ChatGPT 桌面应用的正式版不允许外部程序在运行中接入界面，只能在启动时附加本机调试端口。插件会在窗口就绪后请求它正常退出（与 ⌘Q 相同，会完成保存），再带上调试端口重新打开。整个过程通常需要 15 秒或更久，主要取决于客户端自身的退出收尾。Antigravity 和 Claude 支持运行中接入，Claude 如未打开「Enable Main Process Debugger」，将仅可使用会话内卡片。
+ChatGPT 桌面应用与新版 Antigravity 的正式版仅允许在启动时通过参数开启本机调试端口。冷启动窗口就绪后，插件会请求客户端正常退出（与 ⌘Q 相同，会完成保存），再带上调试端口重新打开。整个过程通常需要 15 秒或更久，主要取决于客户端自身的退出收尾。若安装前 Antigravity 已在运行，手动退出再打开一次即可。Claude 支持运行中接入，如未打开「Enable Main Process Debugger」，将仅可使用会话内卡片。
 
 **会话列表里看不到进度圆环怎么办？**
 
-运行 `npx agent-things doctor`，查看客户端、后台服务和界面挂载的诊断信息。ChatGPT 刚打开时需要等它重新打开一次；Claude 的会话列表圆环需要先开启「Enable Main Process Debugger」。
+运行 `npx agent-things doctor`，查看客户端、后台服务和界面挂载的诊断信息。ChatGPT 或 Antigravity 刚打开时需要等它自动重开一次（若 Antigravity 此前已带旧状态运行，请完全退出后重开一次）；Claude 的会话列表圆环需要先开启「Enable Main Process Debugger」。
 
 **会修改客户端吗？**
 
@@ -176,9 +176,9 @@ Agent Things 依赖 LLM 更新具体待办事项，免去了繁琐的记录过�
 
 不会。分析只使用会话中的用户与助手文本；工具原始输出、思考过程和图片都不会发送给模型。插件也不会读取项目文件内容。
 
-**可以关闭 ChatGPT 启动时的自动重开吗？**
+**可以关闭 ChatGPT 或 Antigravity 启动时的自动重开吗？**
 
-目前没有菜单开关。可以把 `~/Library/Application Support/CodexSessionStatus/autostart.json` 中的 `allowClientRestart` 改为 `false`，再运行 `npx agent-things` 重新安装以重启后台服务。关闭后，ChatGPT 只有在带调试端口启动时才会显示进度圆环，`/things` 和 MCP 工具不受影响。
+目前没有菜单开关。可以把 `~/Library/Application Support/CodexSessionStatus/autostart.json`（ChatGPT）或 `~/.gemini/antigravity/session-status/autostart.json`（Antigravity）中的 `allowClientRestart` 改为 `false`，再运行 `npx agent-things` 同步组件以重启后台服务。关闭后，只有在带调试端口启动时才会显示侧栏进度圆环，Things 面板、`/things` 和 MCP 工具不受影响。
 
 **客户端更新后进度圆环不见了怎么办？**
 

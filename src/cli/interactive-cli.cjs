@@ -6,7 +6,7 @@ const { probeEnvironment, formatProbeText } = require('./environment-probe.cjs')
 const { selectLanguageWithProbe, selectApps, askConfirm, selectMenu } = require('./prompt-tui.cjs');
 const { readConfig, executeSetup, uninstallAll, DATA_DIR } = require('./setup-orchestrator.cjs');
 const launchd = require('../launchd.cjs');
-const { CdpSession, listTargets } = require('../cdp.cjs');
+const { CdpSession, listTargets, CDP_PORT = 39222, ANTIGRAVITY_CDP_PORT = 29222 } = require('../cdp.cjs');
 const { attachmentStatus } = require('../manual-status-agent.cjs');
 const { requestProgressHttp } = require('../local-progress-http.cjs');
 const { getUpdateInfo, startUpdate, verifyServices } = require('../npm-updates.cjs');
@@ -38,47 +38,59 @@ async function showUpdates(lang) {
   } catch (error) { console.log(zh ? `升级入口暂不可用：${error.message}` : `Update unavailable: ${error.message}`); }
 }
 
-async function showCodexDiagnosis(app, attachment, enabled, running, zh) {
+const STARTUP_EVENTS = {
+  'quit-timeout': ['客户端退出较慢，正在继续等待退出以完成重开', 'Client is slow to quit; waiting to finish reopening'],
+  'quit-accepted': ['客户端已接受退出请求，等待进程结束', 'Client accepted the quit request; waiting for it to exit'],
+  'late-exit-observed': ['已检测到延迟退出，正在继续重开', 'Delayed exit detected; resuming reopening'],
+  'late-exit-replaced': ['已检测到另一个客户端进程，交接已结束', 'Another client process appeared; handoff ended'],
+  'late-exit-expired': ['延迟退出等待已到期，可重新打开客户端', 'Delayed-exit monitoring expired; open the client again'],
+  reopening: ['正在带调试端口重开客户端', 'Reopening the client with the debug port'],
+  'quit-refused': ['客户端未接受退出请求', 'Client declined the quit request'],
+  'skipped-cooldown': ['本次启动落在上次接管后的保护冷却期内', 'Launch fell within the cooldown after the previous handoff'],
+  'skipped-active-or-background': ['检测到客户端已在使用或位于后台，跳过接管', 'Client was active or in the background, so handoff was skipped'],
+  'another-instance-started': ['接管期间出现另一个客户端进程', 'Another client process appeared during handoff'],
+  'port-in-use': ['调试端口已被占用', 'Debug port was already in use'],
+  'launch-failed': ['带调试端口重开失败', 'Could not reopen with the debug port'],
+  'reopen-canceled': ['接管期间已有客户端启动', 'The client was already launching during handoff'],
+  observing: ['启动观察模式', 'Startup observation mode'],
+  watching: ['启动监听已就绪', 'Startup watcher ready'],
+  reopened: ['客户端已带调试端口重开', 'Client reopened with the debug port'],
+};
+
+async function showStartupDiagnosis({ app, attachment, expectedPort, stateDir, stateFile, label, logDir, logFile, windowLabel, enabled, running, zh }) {
   if (!enabled || !app.installed) return;
   let startup;
-  try { startup = startupStatus(DATA_DIR); }
-  catch (error) { console.log(`  ${zh ? '读取启动记录失败' : 'Cannot read startup history'}: ${error.message}`); }
-  const events = {
-    'quit-timeout': ['客户端退出较慢，正在继续等待退出以完成重开', 'Client is slow to quit; waiting to finish reopening'],
-    'quit-accepted': ['客户端已接受退出请求，等待进程结束', 'Client accepted the quit request; waiting for it to exit'],
-    'late-exit-observed': ['已检测到延迟退出，正在继续重开', 'Delayed exit detected; resuming reopening'],
-    'late-exit-replaced': ['已检测到另一个客户端进程，交接已结束', 'Another client process appeared; handoff ended'],
-    'late-exit-expired': ['延迟退出等待已到期，可重新打开客户端', 'Delayed-exit monitoring expired; open the client again'],
-    reopening: ['正在带调试端口重开客户端', 'Reopening the client with the debug port'],
-    'quit-refused': ['客户端未接受退出请求', 'Client declined the quit request'],
-    'skipped-cooldown': ['本次启动落在上次接管后的保护冷却期内', 'Launch fell within the cooldown after the previous handoff'],
-    'skipped-active-or-background': ['检测到客户端已在使用或位于后台，跳过接管', 'Client was active or in the background, so handoff was skipped'],
-    'another-instance-started': ['接管期间出现另一个客户端进程', 'Another client process appeared during handoff'],
-    'port-in-use': ['调试端口已被占用', 'Debug port was already in use'],
-    'launch-failed': ['带调试端口重开失败', 'Could not reopen with the debug port'],
-    'reopen-canceled': ['接管期间已有客户端启动', 'The client was already launching during handoff'],
-    observing: ['启动观察模式', 'Startup observation mode'],
-    watching: ['启动监听已就绪', 'Startup watcher ready'],
-    reopened: ['客户端已带调试端口重开', 'Client reopened with the debug port'],
-  };
+  try {
+    const options = {};
+    if (stateFile) options.stateFile = stateFile;
+    if (label) options.label = label;
+    if (logDir) options.logDir = logDir;
+    startup = Object.keys(options).length ? startupStatus(stateDir, options) : startupStatus(stateDir);
+  } catch (error) {
+    console.log(`  ${zh ? '读取启动记录失败' : 'Cannot read startup history'}: ${error.message}`);
+  }
   if (startup?.event) {
     const date = startup.updatedAt ? ` · ${new Date(startup.updatedAt).toLocaleString(zh ? 'zh-CN' : 'en-US')}` : '';
-    console.log(`  ${zh ? '最近启动记录' : 'Last startup event'}: ${events[startup.event]?.[zh ? 0 : 1] || startup.event}${date}`);
+    console.log(`  ${zh ? '最近启动记录' : 'Last startup event'}: ${STARTUP_EVENTS[startup.event]?.[zh ? 0 : 1] || startup.event}${date}`);
   }
+  const appBundle = `${app.id === 'codex' ? 'ChatGPT' : 'Antigravity'}.app`;
+  const waitingWindow = windowLabel === 'Antigravity' ? 'an Antigravity' : `a ${windowLabel}`;
   let diagnosis;
   if (!running) diagnosis = zh ? '插件后台未运行。请在管理菜单同步组件与技能。' : 'The plugin daemon is stopped. Sync components and skills from the menu.';
   else if (attachment.authHealthy === false) diagnosis = zh ? '后台进程存在，但鉴权健康检查未通过。请在管理菜单同步组件并查看启动日志。' : 'The daemon process exists, but its authenticated health check failed. Sync components and inspect the startup log.';
-  else if (!app.running) diagnosis = zh ? '等待 ChatGPT.app 启动。' : 'Waiting for ChatGPT.app to launch.';
-  else if (!attachment.portOpen && await portInUse()) diagnosis = zh ? '39222 已被监听，但无法连接到调试接口。请检查端口占用。' : 'Port 39222 is listening, but its debugger is unreachable. Check which process owns the port.';
+  else if (!app.running) diagnosis = zh ? `等待 ${appBundle} 启动。` : `Waiting for ${appBundle} to launch.`;
+  else if (!attachment.portOpen && await portInUse(expectedPort)) diagnosis = zh ? `${expectedPort} 已被监听，但无法连接到调试接口。请检查端口占用。` : `Port ${expectedPort} is listening, but its debugger is unreachable. Check which process owns the port.`;
   else if (!attachment.portOpen) {
     const retry = startup?.lastAttemptAt && startup.lastAttemptAt + COOLDOWN_MS - Date.now();
-    diagnosis = zh ? '当前客户端没有开启 39222 调试端口。保存工作后完全退出 ChatGPT.app，再从原图标打开。' : 'The client has no debugger on port 39222. Save your work, fully quit ChatGPT.app, then open it again.';
+    diagnosis = zh
+      ? `当前客户端没有开启 ${expectedPort} 调试端口。保存工作后完全退出 ${appBundle}，再从原图标打开。`
+      : `The client has no debugger on port ${expectedPort}. Save your work, fully quit ${appBundle}, then open it again.`;
     if (retry > 0) diagnosis += zh ? ` 建议在 ${Math.ceil(retry / 1000)} 秒后重开。` : ` Reopen after ${Math.ceil(retry / 1000)} seconds.`;
-  } else if (!attachment.windows.length) diagnosis = zh ? '调试端口可连接，等待 Codex 主窗口。' : 'Debugger reachable. Waiting for a Codex main window.';
+  } else if (!attachment.windows.length) diagnosis = zh ? `调试端口可连接，等待 ${windowLabel} 主窗口。` : `Debugger reachable. Waiting for ${waitingWindow} main window.`;
   else if (!attachment.windows.some(window => window.version)) diagnosis = zh ? '已找到主窗口，界面组件尚未挂载。' : 'Main window found. The UI component has not attached yet.';
   else diagnosis = zh ? '界面组件已挂载。' : 'UI component attached.';
   console.log(`  ${zh ? '诊断' : 'Diagnosis'}: ${diagnosis}`);
-  if (startup?.logDirectory) console.log(`  ${zh ? '启动日志' : 'Startup log'}: ${path.join(startup.logDirectory, 'agent.log')}`);
+  if (startup?.logDirectory) console.log(`  ${zh ? '启动日志' : 'Startup log'}: ${path.join(startup.logDirectory, logFile)}`);
 }
 
 async function showHealthStatus(lang) {
@@ -87,24 +99,34 @@ async function showHealthStatus(lang) {
   const zh = (lang || config?.lang || 'zh') === 'zh';
   lang = zh ? 'zh' : 'en';
   console.log(zh ? '\nAgent Things 运行状态' : '\nAgent Things Health Check');
-  const codex = await attachmentStatus(39222);
+  const codex = await attachmentStatus(CDP_PORT);
   let codexHealthy = false;
   try { await requestProgressHttp(path.join(DATA_DIR, 'manual-state.json'), '/health', undefined, undefined, { timeoutMs: 1000 }); codexHealthy = true; } catch {}
   codex.authHealthy = codexHealthy;
-  let agyHealthy = false, agyMounted = 0;
-  const agyState = path.join(os.homedir(), '.gemini/antigravity/session-status/manual-state.json');
+  let agyHealthy = false, agyMounted = 0, agyPortOpen = false;
+  const agyWindows = [];
+  const agyStateDir = path.join(os.homedir(), '.gemini/antigravity/session-status');
+  const agyState = path.join(agyStateDir, 'manual-state.json');
   try { await requestProgressHttp(agyState, '/health'); agyHealthy = true; } catch {}
   if (env.antigravity.port) {
-    for (const target of await listTargets(env.antigravity.port, 1000).catch(() => [])) {
-      if (target.type !== 'page' || !/^(https?:\/\/(127\.0\.0\.1|localhost)|vscode-file:)/.test(target.url)) continue;
-      const session = new CdpSession(target, env.antigravity.port);
-      try {
-        await session.connect();
-        const { result } = await session.evaluate('window.__codexSessionStatus?.status().mounted || 0');
-        agyMounted += Number(result.value) || 0;
-      } catch {} finally { session.close(); }
-    }
+    try {
+      const targets = await listTargets(env.antigravity.port, 1000);
+      agyPortOpen = true;
+      for (const target of targets) {
+        if (target.type !== 'page' || !/^(https?:\/\/(127\.0\.0\.1|localhost)|vscode-file:)/.test(target.url)) continue;
+        const session = new CdpSession(target, env.antigravity.port);
+        try {
+          await session.connect();
+          const { result } = await session.evaluate('window.__codexSessionStatus?.status?.() || null');
+          const status = result.value;
+          const mounted = Number(status?.mounted) || 0;
+          agyMounted += mounted;
+          agyWindows.push({ version: status?.version || (status ? '1' : null) });
+        } catch {} finally { session.close(); }
+      }
+    } catch {}
   }
+  const agyAttachment = { authHealthy: agyHealthy, portOpen: agyPortOpen, windows: agyWindows };
   for (const app of [env.codex, env.antigravity]) {
     const enabled = config?.enabledApps.includes(app.id);
     const job = launchd.printJob(app.id === 'codex' ? 'com.codexsessionstatus.agent' : 'com.antigravity.session-status');
@@ -124,9 +146,37 @@ async function showHealthStatus(lang) {
     console.log(zh
       ? `  启用: ${enabled ? '是' : '否'}；后台: ${service ? '运行' : '停止'}；挂载标记: ${mounted}；MCP配置: ${registered ? '已注册' : '未注册'}`
       : `  Enabled: ${Boolean(enabled)}; daemon: ${service ? 'running' : 'stopped'}; mounted badges: ${mounted}; MCP configured: ${registered}`);
-    if (app.id === 'antigravity') console.log(zh ? `  鉴权健康检查: ${agyHealthy ? '通过' : '不可用'}` : `  Authenticated health: ${agyHealthy ? 'OK' : 'unavailable'}`);
-    if (app.id === 'codex') console.log(zh ? `  鉴权健康检查: ${codexHealthy ? '通过' : '不可用'}` : `  Authenticated health: ${codexHealthy ? 'OK' : 'unavailable'}`);
-    if (app.id === 'codex') await showCodexDiagnosis(app, codex, enabled, service, zh);
+    if (app.id === 'antigravity') {
+      console.log(zh ? `  鉴权健康检查: ${agyHealthy ? '通过' : '不可用'}` : `  Authenticated health: ${agyHealthy ? 'OK' : 'unavailable'}`);
+      await showStartupDiagnosis({
+        app,
+        attachment: agyAttachment,
+        expectedPort: env.antigravity.port || ANTIGRAVITY_CDP_PORT,
+        stateDir: agyStateDir,
+        stateFile: path.join(agyStateDir, 'startup-state.json'),
+        label: 'com.antigravity.session-status',
+        logDir: agyStateDir,
+        logFile: 'daemon.log',
+        windowLabel: 'Antigravity',
+        enabled,
+        running: service,
+        zh,
+      });
+    }
+    if (app.id === 'codex') {
+      console.log(zh ? `  鉴权健康检查: ${codexHealthy ? '通过' : '不可用'}` : `  Authenticated health: ${codexHealthy ? 'OK' : 'unavailable'}`);
+      await showStartupDiagnosis({
+        app,
+        attachment: codex,
+        expectedPort: CDP_PORT,
+        stateDir: DATA_DIR,
+        logFile: 'agent.log',
+        windowLabel: 'Codex',
+        enabled,
+        running: service,
+        zh,
+      });
+    }
   }
   if (env.claude?.installed) {
     const stateFile = require('../harnesses/claude/claude-service.cjs').DEFAULT_STATE_FILE;
@@ -222,6 +272,9 @@ function completed(apps, zh) {
   console.log(zh ? '请在宿主中重新加载 MCP 配置。终端可以关闭。' : 'Reload MCP configuration in the host. You may close the terminal.');
   if (apps.length) console.log(zh ? '正常打开应用后，可从运行状态页检查挂载。' : 'Open the app normally and check mounting from Health Check.');
   if (apps.includes('codex')) console.log(zh ? 'ChatGPT.app 已打开但尚无标记时，请保存工作后正常退出，再从原图标打开。' : 'If ChatGPT.app is already open without badges, save your work, quit normally, and reopen its original icon.');
+  if (apps.includes('antigravity')) console.log(zh
+    ? 'Antigravity：Things 面板与 /things 已就绪；从原图标冷启动时会自动附带调试端口并挂载侧栏圆环。若当前已在运行且无圆环，请保存工作后完全退出再重开一次。'
+    : 'Antigravity: Things pane and /things are ready; cold launches from its icon attach the debug port for sidebar rings. If already running without rings, save your work, quit, and reopen it once.');
   if (apps.includes('claude')) console.log(zh
     ? 'Claude Code：新会话会加载会话卡片；已有会话输入 /reload-plugins，再用 /things 打开。侧栏圆环可在开发者菜单手动开启 Enable Main Process Debugger 后挂载。'
     : 'Claude Code: new sessions load the card; run /reload-plugins in existing sessions, then /things. For sidebar rings, manually enable Developer → Enable Main Process Debugger.');
@@ -253,13 +306,19 @@ async function runInteractiveCli(options = {}) {
     if (lang === null) return;
     const apps = await selectApps(env, lang, config?.installed === false ? null : config?.enabledApps || null);
     if (apps === null || !apps.length) { console.log(lang === 'zh' ? '安装已取消。' : 'Setup cancelled.'); return; }
-    let restart = false;
+    let autoRestartCodex = false;
+    let autoRestartAntigravity = false;
     if (apps.includes('codex') && env.codex.running && !env.codex.portActive) {
       const answer = await askConfirm(lang === 'zh' ? '是否现在正常退出并重新打开 ChatGPT.app 以启用挂载？请先保存工作。' : 'Quit and reopen ChatGPT.app to enable mounting now? Save your work first.', false, lang);
       if (answer === null) return;
-      restart = answer;
+      autoRestartCodex = answer;
     }
-    await executeSetup({ lang, enabledApps: apps, autoRestartCodex: restart, verify: verifyServices });
+    if (apps.includes('antigravity') && env.antigravity.running && !env.antigravity.port) {
+      const answer = await askConfirm(lang === 'zh' ? '是否现在正常退出并带调试端口重新打开 Antigravity.app 以启用侧边栏进度圆环？请先保存工作。' : 'Quit and reopen Antigravity.app with the debug port to enable sidebar progress rings now? Save your work first.', false, lang);
+      if (answer === null) return;
+      autoRestartAntigravity = answer;
+    }
+    await executeSetup({ lang, enabledApps: apps, autoRestartCodex, autoRestartAntigravity, verify: verifyServices });
     completed(apps, lang === 'zh');
     return;
   }

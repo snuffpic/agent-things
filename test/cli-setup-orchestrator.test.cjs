@@ -80,3 +80,39 @@ test('syncAntigravityHooks installs, preserves foreign hooks and disables cleanl
   assert.ok(parsed['other-guard'], 'Third-party hook should still be preserved');
   assert.equal(parsed['agent-things-instant-card'], undefined, 'Instant card hook should be removed');
 });
+
+test('setup-antigravity-service install configures --watch-startup, Interactive ProcessType, and autostart.json', async t => {
+  const vm = require('node:vm');
+  const root = path.resolve(__dirname, '..');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-svc-data-'));
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-svc-log-'));
+  t.after(() => {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.rmSync(logDir, { recursive: true, force: true });
+  });
+  const written = [];
+  const mockedLaunchd = {
+    bootout: async label => written.push(['bootout', label]),
+    writePlist: (plist, plistPath) => written.push(['writePlist', plist, plistPath]),
+    bootstrap: plistPath => written.push(['bootstrap', plistPath]),
+  };
+  const mod = { exports: {} };
+  const file = path.join(root, 'scripts/setup-antigravity-service.cjs');
+  const source = fs.readFileSync(file, 'utf8').replace(/^#!.*\n/, '');
+  const req = id => (id === '../src/launchd.cjs' ? mockedLaunchd : require(id.startsWith('.') ? path.resolve(path.dirname(file), id) : id));
+  vm.runInThisContext('(function(require,module,exports,__filename,__dirname){' + source + '\n})')(req, mod, mod.exports, file, path.dirname(file));
+  await mod.exports.install({ root, dataDir, logDir });
+
+  assert.equal(fs.existsSync(path.join(dataDir, 'bridge')), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(logDir, 'autostart.json'), 'utf8')), {
+    app: '/Applications/Antigravity.app',
+    port: 29222,
+    allowClientRestart: true,
+  });
+  const writeCall = written.find(([op]) => op === 'writePlist');
+  assert.ok(writeCall, 'writePlist should be called');
+  const [, plist] = writeCall;
+  assert.equal(plist.Label, 'com.antigravity.session-status');
+  assert.equal(plist.ProcessType, 'Interactive');
+  assert.deepEqual(plist.ProgramArguments.slice(1), [path.join(root, 'bin/antigravity-session-status.cjs'), '--daemon', '--watch-startup']);
+});

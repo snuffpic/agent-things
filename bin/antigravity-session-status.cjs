@@ -1,26 +1,58 @@
 #!/usr/bin/env node
 'use strict';
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { AntigravityService, DEFAULT_PORT, DEFAULT_STATE_FILE } = require('../src/harnesses/antigravity/antigravity-service.cjs');
 const { AntigravityInjector } = require('../src/harnesses/antigravity/antigravity-injector.cjs');
+const { ANTIGRAVITY_CDP_PORT } = require('../src/cdp.cjs');
 const { requestProgressHttp } = require('../src/local-progress-http.cjs');
 const { assertIntegrationEnabled } = require('../src/cli/integration-state.cjs');
 const { serveMcp } = require('../src/mcp-stdio.cjs');
 const { readConfiguredLang } = require('../src/i18n.cjs');
 
+function readAntigravityAutostart(stateDir) {
+  const defaults = { app: '/Applications/Antigravity.app', port: ANTIGRAVITY_CDP_PORT, allowClientRestart: true };
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(stateDir, 'autostart.json'), 'utf8'));
+    return {
+      ...defaults,
+      ...(raw && typeof raw === 'object' ? raw : {}),
+      app: typeof raw?.app === 'string' && raw.app.trim() ? raw.app : defaults.app,
+      port: Number.isInteger(raw?.port) && raw.port > 0 ? raw.port : defaults.port,
+      allowClientRestart: raw?.allowClientRestart !== false,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function resolveBridgePath(stateDir) {
+  const candidates = [
+    process.env.AGENT_THINGS_BRIDGE_PATH,
+    path.join(os.homedir(), 'Library/Application Support/CodexSessionStatus/bridge'),
+    path.join(stateDir, 'bridge'),
+  ].filter(Boolean);
+  return candidates.find(candidate => {
+    try { return fs.statSync(candidate).isFile(); } catch { return false; }
+  }) || null;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const en = readConfiguredLang() === 'en';
-  if (args.some(arg => !['--daemon', '--no-ui', '--help', '-h', 'help'].includes(arg))) throw new Error(en ? 'Unknown Antigravity service option' : '未知 Antigravity 服务选项');
+  if (args.some(arg => !['--daemon', '--watch-startup', '--no-ui', '--help', '-h', 'help'].includes(arg))) throw new Error(en ? 'Unknown Antigravity service option' : '未知 Antigravity 服务选项');
   if (args.some(arg => ['--help', '-h', 'help'].includes(arg))) {
     console.log(en
-      ? 'Usage: antigravity-session-status [--daemon] [--no-ui]; Agent Things (Antigravity) daemon and MCP stdio service.'
-      : '用法：antigravity-session-status [--daemon] [--no-ui]；Agent Things (Antigravity) 后台与 MCP stdio 服务。');
+      ? 'Usage: antigravity-session-status [--daemon] [--watch-startup] [--no-ui]; Agent Things (Antigravity) daemon and MCP stdio service.'
+      : '用法：antigravity-session-status [--daemon] [--watch-startup] [--no-ui]；Agent Things (Antigravity) 后台与 MCP stdio 服务。');
     return;
   }
   const isDaemon = process.argv.includes('--daemon');
+  const watchStartup = isDaemon && process.argv.includes('--watch-startup') && !process.argv.includes('--no-ui');
   const port = Number(process.env.SESSION_STATUS_PORT ?? DEFAULT_PORT);
   const stateFile = process.env.SESSION_STATUS_STATE_FILE || DEFAULT_STATE_FILE;
-  let service = null, injector = null, stopping = false, refreshing = false, remote = false;
+  let service = null, injector = null, watcher = null, stopping = false, refreshing = false, remote = false;
   const request = (route, body) => requestProgressHttp(stateFile, route, body, port);
   const ensureService = async () => {
     assertIntegrationEnabled('antigravity');
@@ -61,9 +93,30 @@ async function main() {
   void refresh();
   const shutdown = async () => {
     if (stopping) return;
-    stopping = true; clearInterval(timer); await injector?.stop();
+    stopping = true; clearInterval(timer); watcher?.stop(); await injector?.stop();
     if (service) await service.stop();
   };
+  if (watchStartup && process.platform === 'darwin') {
+    const stateDir = path.dirname(stateFile);
+    const bridgePath = resolveBridgePath(stateDir);
+    if (bridgePath) {
+      const settings = readAntigravityAutostart(stateDir);
+      watcher = require('../src/startup/watch.cjs').startWatcher({
+        root: stateDir,
+        settings: {
+          ...settings,
+          bridgePath,
+          stateFile: path.join(stateDir, 'startup-state.json'),
+        },
+        log: message => console.log(message),
+        onLaunch: () => { void refresh(); },
+      });
+      watcher.exited.catch(error => {
+        console.error(error.message);
+        shutdown().then(() => { process.exitCode = 1; });
+      });
+    }
+  }
   const antigravityTools = toolLang => {
     const isEn = toolLang === 'en';
     return [

@@ -60,8 +60,8 @@ Agent Things is a session progress plugin for AI coding sessions on macOS. It su
 
 | Client | Where it shows | First-time setup |
 | --- | --- | --- |
-| ChatGPT | Progress rings in the session list, status panel, `/things` | None. Open it from the Dock as usual; see "Why does ChatGPT close and reopen once?" below |
-| Antigravity | Progress rings in the session list, Things side panel, `/things` | None |
+| ChatGPT | Progress rings in the session list, status panel, `/things` | None. Open it from the Dock as usual; see "Why does ChatGPT or Antigravity close and reopen once?" below |
+| Antigravity | Progress rings in the session list, Things side panel, `/things` | None. Open it from the Dock as usual; see "Why does ChatGPT or Antigravity close and reopen once?" below |
 | Claude Desktop (local Code sessions) | `/things` card in the conversation; session-list rings must be turned on | Run `/reload-plugins` after installing; for session-list rings, turn on **Developer → Enable Main Process Debugger** |
 | DeepSeek Harness (`dsh`) | Progress rings in the session list, `things` right-side pane, `/things`, Plugin Manager model settings | Requires Node.js 24.9+; start with `dsh --profile web` |
 
@@ -132,13 +132,13 @@ These commands apply to ChatGPT only:
 
 Run `npx agent-things` and choose **Switch language** in the management menu. This reinstalls the skills for all enabled clients and the interface switches with it; reconnect the MCP server in your client so the assistant also sees the tool descriptions in the new language. Existing tasks are rewritten in the new language at the next **Update progress**; notes are left as they are.
 
-**Why does ChatGPT close and reopen once?**
+**Why does ChatGPT or Antigravity close and reopen once?**
 
-The release build of the ChatGPT desktop app doesn't let outside programs attach to its interface while it is running; the local debugging port can only be added at launch. Once the window is ready, the plugin asks ChatGPT to quit normally (the same as ⌘Q, so your work is saved) and reopens it with the debugging port. This usually takes 15 seconds or more, mostly spent in the client's own shutdown. Antigravity and Claude can be attached while running; without **Enable Main Process Debugger**, Claude only gets the in-conversation card.
+The release build of ChatGPT and recent Antigravity releases don't let outside programs attach to their interface unless launched with a local debugging port flag. Once the window is ready on a cold launch, the plugin asks the client to quit normally (the same as ⌘Q, so your work is saved) and reopens it with the debugging port. This usually takes 15 seconds or more, mostly spent in the client's own shutdown. If Antigravity was already open before installing, quit and reopen it once; Claude can be attached while running, though without **Enable Main Process Debugger** it only gets the in-conversation card.
 
 **I don't see the progress rings in the session list. What should I do?**
 
-Run `npx agent-things doctor` to see diagnostics for the clients, the background service and interface mounting. Right after ChatGPT opens, wait for it to reopen once; Claude's session-list rings need **Enable Main Process Debugger** turned on first.
+Run `npx agent-things doctor` to see diagnostics for the clients, the background service and interface mounting. Right after ChatGPT or Antigravity opens, wait for it to reopen once (if Antigravity was already open without the debug port, quit and reopen it once); Claude's session-list rings need **Enable Main Process Debugger** turned on first.
 
 **Does it modify the clients?**
 
@@ -176,9 +176,9 @@ All tasks are complete and the conversation shows the changes were pushed to the
 
 No. Analysis only uses the user and assistant text in the session; raw tool output, reasoning and images are never sent to the model. The plugin doesn't read your project files either.
 
-**Can I turn off the automatic reopen when ChatGPT starts?**
+**Can I turn off the automatic reopen when ChatGPT or Antigravity starts?**
 
-There is no menu option yet. Set `allowClientRestart` to `false` in `~/Library/Application Support/CodexSessionStatus/autostart.json`, then run `npx agent-things` and reinstall to restart the background service. After that, ChatGPT only shows progress rings when it was launched with the debugging port; `/things` and the MCP tools are unaffected.
+There is no menu option yet. Set `allowClientRestart` to `false` in `~/Library/Application Support/CodexSessionStatus/autostart.json` (ChatGPT) or `~/.gemini/antigravity/session-status/autostart.json` (Antigravity), then run `npx agent-things` and sync/reinstall to restart the background service. After that, sidebar progress rings only show when launched with the debugging port; Things panel, `/things` and the MCP tools are unaffected.
 
 **The progress rings disappeared after a client update. What now?**
 

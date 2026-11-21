@@ -33,7 +33,7 @@ try{
  for(const name of ['session-status.js','harnesses/codex/codex-harness.js'])assert.equal(fs.readFileSync(path.join(rendererDir,'runtime/src',name),'utf8'),fs.readFileSync(path.join(root,'src',name),'utf8'));
  run(['status','--port','39998','--data-dir',path.join(home,'status-test')]);
  const agy=path.join(root,'bin/antigravity-session-status.cjs');
- for(const args of [['--help'],['--daemon','--help'],['--no-ui','-h']])run(args,0,agy);
+ for(const args of [['--help'],['--daemon','--help'],['--daemon','--watch-startup','--help'],['--no-ui','-h']])run(args,0,agy);
  run(['--unknown'],1,agy);
  const output=path.resolve(__dirname,'../outputs/cli-command-results.json');fs.mkdirSync(path.dirname(output),{recursive:true});fs.writeFileSync(output,JSON.stringify(results,null,2));
  console.log(`${results.length} real subprocess command checks passed`);

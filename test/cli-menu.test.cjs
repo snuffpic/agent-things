@@ -4,12 +4,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-async function simulate(actions, { first = false, select = ['antigravity'], confirm = false, tty = true, updateInfo = { currentVersion: '1.0.0', available: false }, updateError = null, initial = null, codexRunning = false, codexHealthy = codexRunning, deepseek = undefined } = {}) {
+async function simulate(actions, { first = false, select = ['antigravity'], confirm = false, tty = true, updateInfo = { currentVersion: '1.0.0', available: false }, updateError = null, initial = null, codexRunning = false, codexHealthy = codexRunning, antigravity = {}, antigravityHealthy = Boolean(antigravity.running), deepseek = undefined } = {}) {
   let config = first ? null : initial || { lang: 'en', enabledApps: ['codex'] };
   const calls = [], output = [], initialSelections = [], menus = [];
   const env = {
     codex: { id: 'codex', name: 'Codex', installed: true, running: codexRunning },
-    antigravity: { id: 'antigravity', name: 'Antigravity', installed: true },
+    antigravity: { id: 'antigravity', name: 'Antigravity', installed: true, ...antigravity },
     claude: { id: 'claude', name: 'Claude', installed: true },
     ...(deepseek ? { deepseek } : {}),
   };
@@ -19,13 +19,17 @@ async function simulate(actions, { first = false, select = ['antigravity'], conf
     './environment-probe.cjs': { probeEnvironment: async () => env, formatProbeText: () => 'installed' },
     './prompt-tui.cjs': { selectLanguageWithProbe: async () => 'en', selectApps: async (_, __, previous) => { initialSelections.push(previous); return select; }, askConfirm: async () => confirm, selectMenu: async (_, items) => { menus.push(items); assert.ok(queue.length, 'menu must eventually return/exit'); return queue.shift(); } },
     './setup-orchestrator.cjs': { DATA_DIR: '/fixture', readConfig: () => config, executeSetup: async options => { calls.push(options); config = { lang: options.lang, enabledApps: options.enabledApps }; }, uninstallAll: async () => calls.push('uninstall') },
-    '../launchd.cjs': { printJob: () => codexRunning ? 'pid = 123' : null },
+    '../launchd.cjs': { printJob: label => label === 'com.antigravity.session-status' ? (env.antigravity.running ? 'pid = 456' : null) : (codexRunning ? 'pid = 123' : null) },
     '../cdp.cjs': { listTargets: async () => [] },
     '../manual-status-agent.cjs': { attachmentStatus: async () => ({ mountedConversations: 0 }) },
-    '../manual-status-startup.cjs': { startupStatus: () => ({ event: 'skipped-cooldown', lastAttemptAt: Date.now() }) },
+    '../manual-status-startup.cjs': { startupStatus: () => ({ event: 'skipped-cooldown', lastAttemptAt: Date.now(), logDirectory: '/fixture/logs' }) },
     '../startup/watch.cjs': { portInUse: async () => false },
     '../startup/controller.cjs': { COOLDOWN_MS: 120000 },
-    '../local-progress-http.cjs': { requestProgressHttp: async file => { if (codexHealthy && file === '/fixture/manual-state.json') return {}; throw Error('stopped'); } },
+    '../local-progress-http.cjs': { requestProgressHttp: async file => {
+      if (codexHealthy && file === '/fixture/manual-state.json') return {};
+      if (antigravityHealthy && file.endsWith('/.gemini/antigravity/session-status/manual-state.json')) return {};
+      throw Error('stopped');
+    } },
     '../harnesses/claude/claude-service.cjs': { DEFAULT_STATE_FILE: '/fixture/claude-state.json' },
     '../npm-updates.cjs': { getUpdateInfo: async options => { assert.equal(options.force, true); if (updateError) throw Error(updateError); return updateInfo; }, startUpdate: async () => { calls.push('upgrade'); } },
   };
@@ -127,4 +131,25 @@ test('doctor reports DeepSeek Harness health, link validity, analysis model rout
   const brokenText = broken.output.join('\n');
   assert.match(brokenText, /低于 24\.9/);
   assert.match(brokenText, /自动选择 · 4\.1 Flash · Low/);
+});
+
+test('Antigravity doctor diagnoses missing 29222 debug port and setup prompts for restart', async () => {
+  const diag = await simulate(['exit'], {
+    initial: { lang: 'en', enabledApps: ['antigravity'] },
+    antigravity: { running: true, port: null },
+    antigravityHealthy: true,
+  });
+  assert.ok(diag.output.some(line => line.includes('Authenticated health: OK')));
+  assert.ok(diag.output.some(line => line.includes('no debugger on port 29222') && line.includes('Antigravity.app') && line.includes('Reopen after')));
+  assert.ok(diag.output.some(line => line.includes('/fixture/logs/daemon.log')));
+
+  const setup = await simulate([], {
+    first: true,
+    select: ['antigravity'],
+    antigravity: { running: true, port: null },
+    confirm: true,
+  });
+  assert.equal(setup.calls[0].autoRestartCodex, false);
+  assert.equal(setup.calls[0].autoRestartAntigravity, true);
+  assert.ok(setup.output.some(line => line.includes('Antigravity: Things pane and /things are ready')));
 });

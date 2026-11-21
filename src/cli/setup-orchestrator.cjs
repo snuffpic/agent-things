@@ -12,10 +12,12 @@ const { isAppRunning } = require('./environment-probe.cjs');
 const { resolveNode } = require('../resolve.cjs');
 const { assertSetupIdle } = require('../npm-updates.cjs');
 const { syncClaudeInline } = require('../claude-inline-install.cjs');
+const { ANTIGRAVITY_CDP_PORT } = require('../cdp.cjs');
 
 const LABEL = 'com.codexsessionstatus.agent';
 const home = process.env.HOME || os.homedir();
 const DATA_DIR = path.join(home, 'Library/Application Support/CodexSessionStatus');
+const AGY_STATE_DIR = path.join(home, '.gemini/antigravity/session-status');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const LOG_DIR = path.join(home, 'Library/Logs/CodexSessionStatus');
 const PLIST_FILE = path.join(home, 'Library/LaunchAgents', `${LABEL}.plist`);
@@ -200,18 +202,38 @@ async function installBackgroundDaemon(sourceRoot, { refreshRuntime = true } = {
   launchd.bootstrap(PLIST_FILE);
 }
 
-async function restartCodexWithPort({ lang = 'zh' } = {}) {
+async function restartClientWithPort({ executablePath, bundleId, appPath, port, lang = 'zh' } = {}) {
   const en = lang === 'en';
-  const running = () => isAppRunning('/Applications/ChatGPT.app/Contents/MacOS/ChatGPT');
+  const running = () => isAppRunning(executablePath);
   if (running()) {
-    execFileSync('/usr/bin/osascript', ['-e', 'tell application id "com.openai.codex" to quit'], { timeout: 15000, stdio: 'pipe' });
+    execFileSync('/usr/bin/osascript', ['-e', `tell application id "${bundleId}" to quit`], { timeout: 15000, stdio: 'pipe' });
     const deadline = performance.now() + 10000;
     while (running()) {
       if (performance.now() >= deadline) throw new Error(en ? 'Client has not quit yet; please save your work and retry' : '客户端尚未退出，请完成保存后重试');
       await new Promise(resolve => setTimeout(resolve, 100));
     }
   }
-  execFileSync('/usr/bin/open', ['-a', '/Applications/ChatGPT.app', '--args', '--remote-debugging-port=39222']);
+  execFileSync('/usr/bin/open', ['-a', appPath, '--args', `--remote-debugging-port=${port}`]);
+}
+
+function restartCodexWithPort({ lang = 'zh' } = {}) {
+  return restartClientWithPort({
+    executablePath: '/Applications/ChatGPT.app/Contents/MacOS/ChatGPT',
+    bundleId: 'com.openai.codex',
+    appPath: '/Applications/ChatGPT.app',
+    port: 39222,
+    lang,
+  });
+}
+
+function restartAntigravityWithPort({ lang = 'zh' } = {}) {
+  return restartClientWithPort({
+    executablePath: '/Applications/Antigravity.app/Contents/MacOS/Antigravity',
+    bundleId: 'com.google.antigravity',
+    appPath: '/Applications/Antigravity.app',
+    port: ANTIGRAVITY_CDP_PORT,
+    lang,
+  });
 }
 
 function restartStaleThingsSidecar(homeDirectory = home) {
@@ -252,7 +274,7 @@ function restartStaleThingsSidecar(homeDirectory = home) {
   } catch {}
 }
 
-async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'antigravity'], autoRestartCodex = false, verify = async () => {} }) {
+async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'antigravity'], autoRestartCodex = false, autoRestartAntigravity = false, verify = async () => {} }) {
   const en = lang === 'en';
   assertSetupIdle();
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(en ? 'Node.js 22 or newer is required' : '需要 Node.js 22 或更高版本');
@@ -290,7 +312,7 @@ async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'anti
       .map(entry => path.join(dshProfilesDir, entry.name, 'package.json'))
     : [];
   const files = [...new Set([CONFIG_FILE, codexConfig, agyConfig, agyUnifiedConfig, claudeConfig, PLIST_FILE, agy.PLIST_PATH, claude.PLIST_PATH,
-    path.join(DATA_DIR, 'bridge'), path.join(DATA_DIR, 'autostart.json'),
+    path.join(DATA_DIR, 'bridge'), path.join(DATA_DIR, 'autostart.json'), path.join(AGY_STATE_DIR, 'autostart.json'),
     path.join(home, '.codex/skills/agent-things/SKILL.md'),
     path.join(home, '.codex/skills/agent-things-card/SKILL.md'),
     path.join(home, '.codex/skills/things/SKILL.md'),
@@ -309,7 +331,17 @@ async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'anti
   let runtimeChanged = false, servicesTouched = false, inlineChange = null;
   try {
     // Verify and stage the packaged helper before stopping healthy services.
-    if (enabledApps.includes('codex')) prepareStartup(root, DATA_DIR);
+    if (enabledApps.includes('codex') || enabledApps.includes('antigravity')) {
+      prepareStartup(root, DATA_DIR, { autostartFile: enabledApps.includes('codex') ? path.join(DATA_DIR, 'autostart.json') : null });
+    }
+    if (enabledApps.includes('antigravity')) {
+      prepareStartup(root, DATA_DIR, {
+        app: '/Applications/Antigravity.app',
+        port: ANTIGRAVITY_CDP_PORT,
+        autostartFile: path.join(AGY_STATE_DIR, 'autostart.json'),
+        copyBridge: false,
+      });
+    }
     writeConfig({ lang, enabledApps, installed: true, updatedAt: new Date().toISOString() });
     servicesTouched = true;
     await launchd.bootout(LABEL);
@@ -418,8 +450,12 @@ async function executeSetupUnlocked({ lang = 'zh', enabledApps = ['codex', 'anti
     } catch (rollback) { throw new Error(en ? `Setup failed: ${error.message}; recovery failed: ${rollback.message}` : `安装失败：${error.message}；恢复失败：${rollback.message}`); }
     throw error;
   }
-  if (enabledApps.includes('codex') && autoRestartCodex) {
-    try { await restartCodexWithPort({ lang }); }
+  for (const [id, enabled, fn] of [
+    ['codex', autoRestartCodex, restartCodexWithPort],
+    ['antigravity', autoRestartAntigravity, restartAntigravityWithPort],
+  ]) {
+    if (!enabledApps.includes(id) || !enabled) continue;
+    try { await fn({ lang }); }
     catch (error) { throw new Error(en ? `Configuration saved, client restart incomplete: ${error.message}` : `配置已保存，客户端重启未完成：${error.message}`); }
   }
   return { success: true, enabledApps, lang };
@@ -448,7 +484,13 @@ async function uninstallAllUnlocked() {
   }
   syncSkillFiles([], { homeDirectory: home });
   syncAntigravityHooks(false, { homeDirectory: home });
-  for (const file of [path.join(DATA_DIR, 'bridge'), path.join(DATA_DIR, 'autostart.json'), path.join(DATA_DIR, 'state.json')]) fs.rmSync(file, { force: true });
+  for (const file of [
+    path.join(DATA_DIR, 'bridge'),
+    path.join(DATA_DIR, 'autostart.json'),
+    path.join(DATA_DIR, 'state.json'),
+    path.join(AGY_STATE_DIR, 'autostart.json'),
+    path.join(AGY_STATE_DIR, 'startup-state.json'),
+  ]) fs.rmSync(file, { force: true });
   // Clear runtime
   const runtime = path.join(DATA_DIR, 'runtime');
   if (fs.existsSync(runtime)) {
@@ -468,6 +510,7 @@ module.exports = {
   syncAntigravityHooks,
   installBackgroundDaemon,
   restartCodexWithPort,
+  restartAntigravityWithPort,
   executeSetup,
   uninstallAll,
   repairPluginRegistry,

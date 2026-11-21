@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { execSync } = require('node:child_process');
+const { ANTIGRAVITY_CDP_PORT } = require('../src/cdp.cjs');
+const { prepareStartup } = require('../src/runtime-install.cjs');
 
 const PLIST_NAME = 'com.antigravity.session-status.plist';
 const LAUNCH_AGENTS_DIR = path.join(os.homedir(), 'Library', 'LaunchAgents');
@@ -11,6 +13,8 @@ const PLIST_PATH = path.join(LAUNCH_AGENTS_DIR, PLIST_NAME);
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT_PATH = path.join(ROOT, 'bin', 'antigravity-session-status.cjs');
 const LOG_DIR = path.join(os.homedir(), '.gemini', 'antigravity', 'session-status');
+const DATA_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'CodexSessionStatus');
+const ANTIGRAVITY_APP = '/Applications/Antigravity.app';
 
 function getAvailableNode() {
   const candidates = [
@@ -25,15 +29,23 @@ function getAvailableNode() {
   return 'node';
 }
 
-async function install({ root = ROOT } = {}) {
+async function install({ root = ROOT, dataDir = DATA_DIR, logDir = LOG_DIR } = {}) {
   const launchd = require('../src/launchd.cjs');
-  fs.mkdirSync(LOG_DIR, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(logDir, { recursive: true, mode: 0o700 });
+  const copyBridge = !fs.existsSync(path.join(dataDir, 'bridge')) && fs.existsSync(path.join(root, 'native/bin/bridge'));
+  prepareStartup(root, dataDir, {
+    app: ANTIGRAVITY_APP,
+    port: ANTIGRAVITY_CDP_PORT,
+    autostartFile: path.join(logDir, 'autostart.json'),
+    copyBridge,
+  });
   await launchd.bootout('com.antigravity.session-status');
   launchd.writePlist({
     Label: 'com.antigravity.session-status',
-    ProgramArguments: [getAvailableNode(), path.join(root, 'bin/antigravity-session-status.cjs'), '--daemon'],
+    ProgramArguments: [getAvailableNode(), path.join(root, 'bin/antigravity-session-status.cjs'), '--daemon', '--watch-startup'],
     RunAtLoad: true, KeepAlive: { SuccessfulExit: false }, ThrottleInterval: 10,
-    StandardOutPath: path.join(LOG_DIR, 'daemon.log'), StandardErrorPath: path.join(LOG_DIR, 'daemon.err.log'),
+    ProcessType: 'Interactive',
+    StandardOutPath: path.join(logDir, 'daemon.log'), StandardErrorPath: path.join(logDir, 'daemon.err.log'),
     EnvironmentVariables: { PATH: process.env.PATH || '/usr/bin:/bin:/opt/homebrew/bin' },
   }, PLIST_PATH);
   launchd.bootstrap(PLIST_PATH);

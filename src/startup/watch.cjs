@@ -34,8 +34,9 @@ function readState(file) {
 }
 
 function startWatcher({ root, settings, log, onLaunch = () => {} }) {
-  const bridgePath = path.join(root, 'bridge');
-  const stateFile = path.join(root, 'state.json');
+  const bridgePath = settings.bridgePath || path.join(root, 'bridge');
+  const stateFile = settings.stateFile || path.join(root, 'state.json');
+  const cdpPort = Number.isInteger(settings.port) && settings.port > 0 ? settings.port : CDP_PORT;
   const abort = new AbortController();
   let state = readState(stateFile);
 
@@ -49,9 +50,9 @@ function startWatcher({ root, settings, log, onLaunch = () => {} }) {
   const adapter = {
     snapshot: () => native('snapshot'),
     quit: (app, stamp) => native('quit', app.pid, app.key, stamp),
-    launch: () => native('launch', CDP_PORT),
+    launch: () => native('launch', cdpPort),
     show: (app, stamp, frontmost) => native('show', app.pid, app.key, stamp, frontmost),
-    portInUse,
+    portInUse: () => portInUse(cdpPort),
     async record(event, details = {}) {
       const { lastAttemptAt, attemptPid, attemptInputStamp, pendingHandoff } = state;
       state = { lastAttemptAt, attemptPid, attemptInputStamp, pendingHandoff, ...details, event, updatedAt: Date.now() };

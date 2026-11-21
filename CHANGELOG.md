@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.5 (2026-11-21)
+
+- **Fixed Antigravity client support**: Added a native cold-launch startup watcher (`--watch-startup`, `127.0.0.1:29222`) for `Antigravity.app` so recent Antigravity builds that only enable CDP via CLI flags cleanly quit and reopen with `--remote-debugging-port=29222` on normal Dock/Finder launches, restoring sidebar progress rings and message locate navigation alongside the Things pane and `/things` command; added `doctor` port diagnostics, setup restart prompts, and `autostart.json` opt-out (`~/.gemini/antigravity/session-status/autostart.json`).
+
+---
+
+- **修复了 Antigravity 客户端的支持**：为 `Antigravity.app` 接入原生冷启动守护（`--watch-startup`，默认调试端口 `127.0.0.1:29222`），解决新版 Antigravity 默认不再开放调试端口导致侧边栏进度圆环与定位跳转无法生效的问题；正常从 Dock/图标冷启动后自动完成正常退出并附带调试端口重开，并补齐 `doctor` 诊断、安装重开提示及 `~/.gemini/antigravity/session-status/autostart.json` 关闭开关。
+
 ## 1.3.4 (2026-11-20)
 
 - **DeepSeek Harness (`dsh`) full integration**: Added native support for DeepSeek Harness (`dsh --profile web`) via the bundled Cordis package `packages/dsh-agent-things` (`agent-things-dsh`) and standalone stdio MCP server (`bin/dsh-mcp.cjs`), bringing left-sidebar progress rings, the `things` right-pane detail view, `/things` inline command cards, incremental AI task extraction, and local ledger persistence (`~/Library/Application Support/AgentThings/deepseek/manual-state.json`).

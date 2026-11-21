@@ -11,12 +11,11 @@ const LABEL = 'com.codexsessionstatus.agent';
 const plistFile = () => path.join(os.homedir(), 'Library/LaunchAgents', `${LABEL}.plist`);
 const logDirectory = () => path.join(os.homedir(), 'Library/Logs/CodexSessionStatus');
 
-function startupStatus(directory) {
+function startupStatus(directory, { stateFile = path.join(directory, 'state.json'), label = LABEL, logDir = logDirectory() } = {}) {
   let state = null;
-  const file = path.join(directory, 'state.json');
-  if (fs.existsSync(file)) state = JSON.parse(fs.readFileSync(file, 'utf8'));
-  return { enabled: Boolean(launchd.printJob(LABEL)), event: state?.event ?? null,
-    updatedAt: state?.updatedAt ?? null, lastAttemptAt: state?.lastAttemptAt ?? null, logDirectory: logDirectory() };
+  if (fs.existsSync(stateFile)) state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  return { enabled: Boolean(launchd.printJob(label)), event: state?.event ?? null,
+    updatedAt: state?.updatedAt ?? null, lastAttemptAt: state?.lastAttemptAt ?? null, logDirectory: logDir };
 }
 
 async function installAutostartUnlocked(directory) {

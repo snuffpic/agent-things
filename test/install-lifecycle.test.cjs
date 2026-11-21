@@ -81,7 +81,9 @@ test('isolated home installs without developer tools, reinstalls and uninstalls 
       assert.ok(!fs.existsSync(path.join(DATA_DIR,'runtime')));
       await executeSetup({enabledApps:['antigravity']});
       assert.equal(services.size,1);
-      assert.ok(!fs.existsSync(path.join(DATA_DIR,'bridge')));
+      assert.ok(fs.existsSync(path.join(DATA_DIR,'bridge')));
+      assert.ok(!fs.existsSync(path.join(DATA_DIR,'autostart.json')));
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home,'.gemini/antigravity/session-status/autostart.json'))),{app:'/Applications/Antigravity.app',port:29222,allowClientRestart:true});
       await uninstallAll();
       for(const relative of ['.codex/skills/agent-things/SKILL.md','.gemini/config/skills/agent-things/SKILL.md'])assert.ok(!fs.existsSync(path.join(home,relative)));
     })().catch(error=>{console.error(error);process.exitCode=1});

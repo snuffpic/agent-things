@@ -70,3 +70,67 @@ if (mode === 'watch') {
   assert.equal(state.lastAttemptAt, 0);
   assert.equal(fs.readFileSync(path.join(root, 'launched'), 'utf8'), 'once');
 });
+
+test('custom bridgePath, stateFile and port pass through for secondary clients such as Antigravity', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'startup-custom-root-'));
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'startup-custom-state-'));
+  t.after(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(stateDir, { recursive: true, force: true });
+  });
+  const old = { key: 'agy-old', pid: 52, launchedAt: Date.now() - 60000 };
+  const stateFile = path.join(stateDir, 'startup-state.json');
+  fs.writeFileSync(stateFile, JSON.stringify({
+    lastAttemptAt: Date.now() - 60000,
+    pendingHandoff: { app: old, inputStamp: 9, expiresAt: Date.now() - 60000 },
+  }));
+  fs.writeFileSync(path.join(root, 'apps.json'), JSON.stringify([old]));
+  const bridge = path.join(root, 'custom-bridge');
+  fs.writeFileSync(bridge, `#!${process.execPath}
+const fs = require('node:fs'), path = require('node:path');
+const root = __dirname, file = path.join(root, 'apps.json');
+const mode = process.argv[2];
+const emit = data => console.log(JSON.stringify(data));
+if (mode === 'watch') {
+  emit({ event: 'NSWorkspaceDidLaunchApplicationNotification' });
+  setTimeout(() => {
+    fs.writeFileSync(file, '[]');
+    emit({ event: 'NSWorkspaceDidTerminateApplicationNotification' });
+  }, 150);
+  setInterval(() => {}, 1000);
+} else if (mode === 'snapshot') {
+  emit({ apps: JSON.parse(fs.readFileSync(file)), inputStamp: 9, inputIdleMs: 0, frontmostPid: 1 });
+} else if (mode === 'launch') {
+  fs.writeFileSync(path.join(root, 'launch-args.json'), JSON.stringify(process.argv.slice(3)));
+  emit({ launched: true, key: 'agy-debug', pid: 53 });
+} else if (mode === 'show') {
+  emit({ shown: false });
+} else {
+  throw Error('Unexpected bridge operation: ' + mode);
+}
+`, { mode: 0o700 });
+  let complete;
+  const recovered = new Promise(resolve => { complete = resolve; });
+  const watcher = startWatcher({
+    root,
+    settings: {
+      app: '/Applications/Antigravity.app',
+      port: 29222,
+      allowClientRestart: true,
+      bridgePath: bridge,
+      stateFile,
+    },
+    log: message => { if (message.startsWith('startup: reopened ')) complete(); },
+  });
+  t.after(() => watcher.stop());
+  await Promise.race([recovered, new Promise((_, reject) => {
+    const timer = setTimeout(() => reject(new Error('Custom watcher handoff did not finish')), 3000);
+    timer.unref();
+  })]);
+  watcher.stop();
+  await watcher.exited;
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'launch-args.json'), 'utf8')), ['/Applications/Antigravity.app', '29222']);
+  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  assert.equal(state.event, 'reopened');
+  assert.equal(fs.existsSync(path.join(root, 'state.json')), false);
+});

@@ -196,7 +196,7 @@ async function main() {
           const runtime = path.join(data, 'runtime');
           assert.ok(fs.existsSync(path.join(home, '.claude/skills/agent-things-ui/hooks/register.js')));
           assert.ok(fs.existsSync(path.join(runtime, 'src/harnesses/claude/claude-navigation.cjs')));
-          assert.equal(fs.existsSync(path.join(data, 'bridge')), expected.includes('codex'));
+          assert.equal(fs.existsSync(path.join(data, 'bridge')), expected.includes('codex') || expected.includes('antigravity'));
           assert.equal(fs.existsSync(path.join(home, 'Library/Application Support/Claude/developer_settings.json')), false);
           checks.push({ host: 'claude', actualLaunchdService: true, terminalClosed: true, mcpReadWrite: true, cardInstalled: true });
         }

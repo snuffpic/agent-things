@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const CDP_PORT = 39222;
+const ANTIGRAVITY_CDP_PORT = 29222;
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
 // The endpoint can run code inside Codex, so never follow a target to anywhere but this machine.
@@ -112,4 +113,4 @@ class CdpSession {
   }
 }
 
-module.exports = { CDP_PORT, CdpSession, assertLoopback, isMainWindow, listTargets };
+module.exports = { CDP_PORT, ANTIGRAVITY_CDP_PORT, CdpSession, assertLoopback, isMainWindow, listTargets };

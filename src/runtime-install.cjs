@@ -601,19 +601,29 @@ function installRuntime(source, runtime, options = {}) {
   }
 }
 
-function prepareStartup(source, directory) {
+function prepareStartup(source, directory, {
+  app = '/Applications/ChatGPT.app',
+  port,
+  autostartFile = path.join(directory, 'autostart.json'),
+  copyBridge = true,
+} = {}) {
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const bridge = path.join(directory, 'bridge');
-  const temporary = `${bridge}.building`;
-  try {
-    fs.copyFileSync(verifyBridgeBundle(source), temporary);
-    fs.chmodSync(temporary, 0o755);
-    const version = JSON.parse(execFileSync(temporary, ['version'], { encoding: 'utf8', stdio: 'pipe', timeout: 5000 }));
-    if (version.protocol !== 1) throw new Error('启动桥协议不匹配，请重新获取安装包');
-    fs.renameSync(temporary, bridge);
-  } finally { fs.rmSync(temporary, { force: true }); }
-  const settings = path.join(directory, 'autostart.json');
-  if (!fs.existsSync(settings)) fs.writeFileSync(settings, JSON.stringify({ app: '/Applications/ChatGPT.app', allowClientRestart: true }) + '\n', { mode: 0o600 });
+  if (copyBridge) {
+    const bridge = path.join(directory, 'bridge');
+    const temporary = `${bridge}.building`;
+    try {
+      fs.copyFileSync(verifyBridgeBundle(source), temporary);
+      fs.chmodSync(temporary, 0o755);
+      const version = JSON.parse(execFileSync(temporary, ['version'], { encoding: 'utf8', stdio: 'pipe', timeout: 5000 }));
+      if (version.protocol !== 1) throw new Error('启动桥协议不匹配，请重新获取安装包');
+      fs.renameSync(temporary, bridge);
+    } finally { fs.rmSync(temporary, { force: true }); }
+  }
+  if (autostartFile && !fs.existsSync(autostartFile)) {
+    fs.mkdirSync(path.dirname(autostartFile), { recursive: true, mode: 0o700 });
+    const payload = { app, ...(Number.isInteger(port) && port > 0 ? { port } : {}), allowClientRestart: true };
+    fs.writeFileSync(autostartFile, JSON.stringify(payload) + '\n', { mode: 0o600 });
+  }
 }
 
 module.exports = {

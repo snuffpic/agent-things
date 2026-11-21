@@ -69,3 +69,37 @@ test('missing, stale or corrupted artifacts fail before replacing an installed b
   assert.equal(fs.existsSync(path.join(directory, 'bridge.building')), false);
   assert.equal(fs.existsSync(path.join(directory, 'autostart.json')), false);
 });
+
+test('prepareStartup stages custom autostart files cleanly with or without copying the bridge', t => {
+  const directory = temporary(t);
+  const stateDir = temporary(t);
+  const customAutostart = path.join(stateDir, 'autostart.json');
+  prepareStartup(root, directory, { autostartFile: null });
+  assert.ok(fs.existsSync(path.join(directory, 'bridge')));
+  assert.equal(fs.existsSync(path.join(directory, 'autostart.json')), false);
+
+  const secondDir = temporary(t);
+  prepareStartup(root, secondDir, {
+    app: '/Applications/Antigravity.app',
+    port: 29222,
+    autostartFile: customAutostart,
+    copyBridge: false,
+  });
+  assert.equal(fs.existsSync(path.join(secondDir, 'bridge')), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(customAutostart, 'utf8')), {
+    app: '/Applications/Antigravity.app',
+    port: 29222,
+    allowClientRestart: true,
+  });
+
+  // Preserve custom user edits (e.g. allowClientRestart: false) on re-run.
+  const overridden = JSON.stringify({ app: '/Applications/Antigravity.app', port: 29222, allowClientRestart: false });
+  fs.writeFileSync(customAutostart, overridden);
+  prepareStartup(root, secondDir, {
+    app: '/Applications/Antigravity.app',
+    port: 29222,
+    autostartFile: customAutostart,
+    copyBridge: false,
+  });
+  assert.equal(fs.readFileSync(customAutostart, 'utf8'), overridden);
+});

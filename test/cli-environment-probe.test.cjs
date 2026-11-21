@@ -34,6 +34,18 @@ test('formatProbeText handles zh and en languages gracefully', () => {
   assert.match(formatProbeText(fakeCodexRunningNoPort, 'zh'), /需重启/);
   assert.match(formatProbeText(fakeCodexRunningNoPort, 'en'), /restart needed/);
 
+  const fakeAgyInstalled = { id: 'antigravity', name: 'Antigravity', installed: true, running: false, port: null, path: '/Applications/Antigravity.app' };
+  assert.match(formatProbeText(fakeAgyInstalled, 'zh'), /已安装/);
+  assert.match(formatProbeText(fakeAgyInstalled, 'en'), /Installed/);
+
+  const fakeAgyNoPort = { id: 'antigravity', name: 'Antigravity', installed: true, running: true, port: null };
+  assert.match(formatProbeText(fakeAgyNoPort, 'zh'), /无调试端口，需重启/);
+  assert.match(formatProbeText(fakeAgyNoPort, 'en'), /No debug port, restart needed/);
+
+  const fakeAgyWithPort = { id: 'antigravity', name: 'Antigravity', installed: true, running: true, port: 29222 };
+  assert.match(formatProbeText(fakeAgyWithPort, 'zh'), /29222/);
+  assert.match(formatProbeText(fakeAgyWithPort, 'en'), /29222/);
+
   const dshBadNode = { id: 'deepseek', name: 'DeepSeek Harness', installed: true, nodeVersion: 'v22.14.0', nodeCompatible: false };
   assert.match(formatProbeText(dshBadNode, 'zh'), /Node >= 24\.9.*v22\.14\.0/);
   assert.match(formatProbeText(dshBadNode, 'en'), /Needs Node >= 24\.9.*v22\.14\.0/);

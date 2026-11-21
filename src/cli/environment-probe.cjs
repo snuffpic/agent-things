@@ -196,6 +196,7 @@ function formatProbeText(item, lang = 'zh') {
   }
   if (item.id === 'antigravity') {
     if (item.port) return isZh ? `运行中 (调试端口: ${item.port} 可达)` : `Running (Debug port: ${item.port} reachable)`;
+    if (item.running) return isZh ? '运行中 (无调试端口，需重启)' : 'Running (No debug port, restart needed)';
     return isZh ? `已安装 (${displayPath})` : `Installed (${displayPath})`;
   }
   if (item.id === 'agy') {
